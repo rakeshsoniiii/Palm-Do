@@ -1,0 +1,92 @@
+import cv2
+import numpy as np
+
+def palm_scanner():
+    
+    cap = cv2.VideoCapture(0)
+    
+    
+    cv2.namedWindow("Palm Scanner", cv2.WINDOW_NORMAL)
+    
+    print("Palm Scanner Initialized")
+    print("Place your palm facing the camera about 30cm away")
+    print("Press 'c' to capture, 'q' to quit")
+    
+    scan_data = []
+    
+    while True:
+        ret, frame = cap.read()
+        if not ret:
+            break
+            
+      
+        frame = cv2.flip(frame, 1)
+        
+        hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+        
+       
+        lower_skin = np.array([0, 48, 80], dtype=np.uint8)
+        upper_skin = np.array([20, 255, 255], dtype=np.uint8)
+        mask = cv2.inRange(hsv, lower_skin, upper_skin)
+        
+       
+        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (11, 11))
+        mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
+        mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
+        
+        
+        contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        
+       
+        if contours:
+            largest_contour = max(contours, key=cv2.contourArea)
+            if cv2.contourArea(largest_contour) > 10000: 
+                x, y, w, h = cv2.boundingRect(largest_contour)
+                cv2.rectangle(frame, (x, y), (x+w, y+h), (0, 255, 0), 2)
+                
+              
+                palm_region = frame[y:y+h, x:x+w]
+                
+                
+                cv2.putText(frame, "Palm Detected", (10, 30), 
+                           cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+        
+        
+        cv2.imshow("Palm Scanner", frame)
+        
+      
+        key = cv2.waitKey(1) & 0xFF
+        if key == ord('c'):
+            if 'palm_region' in locals():
+           
+                gray = cv2.cvtColor(palm_region, cv2.COLOR_BGR2GRAY)
+                enhanced = cv2.equalizeHist(gray)
+                enhanced = cv2.detailEnhance(enhanced, sigma_s=10, sigma_r=0.15)
+                
+               
+                scan_data.append(enhanced)
+                print(f"Capture #{len(scan_data)} saved!")
+                
+
+                cv2.imshow("Captured Palm", enhanced)
+                cv2.waitKey(1000)
+                cv2.destroyWindow("Captured Palm")
+                
+        elif key == ord('q'):
+            break
+    
+    cap.release()
+    cv2.destroyAllWindows()
+    
+    if scan_data:
+        print("\nProcessing captured images...")
+        for i, scan in enumerate(scan_data):
+            cv2.imwrite(f"palm_scan_{i+1}.png", scan)
+        print(f"{len(scan_data)} scans saved to disk!")
+    else:
+        print("No scans were captured.")
+    
+    return scan_data
+
+if __name__ == "__main__":
+    scans = palm_scanner()
