@@ -1,0 +1,580 @@
+# Save as: palm_biometric_gui.py
+import os
+import sqlite3
+import pickle
+import threading
+import time
+from io import BytesIO
+from collections import deque, defaultdict
+
+import cv2
+import mediapipe as mp
+import numpy as np
+from PIL import Image
+from math import atan2, degrees
+import tkinter as tk
+from tkinter import simpledialog, messagebox, scrolledtext
+
+# ML
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.svm import SVC
+from sklearn.pipeline import make_pipeline
+from sklearn.preprocessing import StandardScaler
+from sklearn.model_selection import cross_val_score
+from sklearn.calibration import CalibratedClassifierCV
+
+# TTS
+import pyttsx3
+
+# Encryption
+try:
+    from cryptography.fernet import Fernet
+except Exception:
+    Fernet = None
+
+# -----------------------
+# Helper: Fernet key
+# -----------------------
+FERNET_KEYFILE = "fernet.key"
+
+def ensure_fernet_key():
+    if Fernet is None:
+        raise RuntimeError("cryptography package not installed. Install via 'pip install cryptography'")
+    if os.path.exists(FERNET_KEYFILE):
+        with open(FERNET_KEYFILE, "rb") as f:
+            key = f.read()
+    else:
+        key = Fernet.generate_key()
+        with open(FERNET_KEYFILE, "wb") as f:
+            f.write(key)
+    return Fernet(key)
+
+# -----------------------
+# Database
+# -----------------------
+class PalmDatabase:
+    def __init__(self, db_file="palm_biometric.db", use_encryption=True):
+        self.conn = sqlite3.connect(db_file, check_same_thread=False)
+        self.create_tables()
+        self.fernet = ensure_fernet_key() if use_encryption else None
+
+    def create_tables(self):
+        cur = self.conn.cursor()
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS users (
+                user_id TEXT PRIMARY KEY,
+                name TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS palm_scans (
+                scan_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id TEXT,
+                image BLOB,
+                features BLOB,
+                timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY(user_id) REFERENCES users(user_id)
+            )
+        """)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS models (
+                model_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                model_data BLOB,
+                accuracy REAL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        self.conn.commit()
+
+    def add_user(self, user_id, name=None):
+        try:
+            cur = self.conn.cursor()
+            cur.execute("INSERT INTO users (user_id, name) VALUES (?, ?)", (user_id, name))
+            self.conn.commit()
+            return True
+        except sqlite3.IntegrityError:
+            return False
+
+    def add_scan(self, user_id, image_array, features_vec):
+        # compress image to JPEG bytes
+        try:
+            pil = Image.fromarray(cv2.cvtColor(image_array, cv2.COLOR_BGR2RGB))
+            buf = BytesIO()
+            pil.save(buf, format="JPEG", quality=80)
+            img_bytes = buf.getvalue()
+
+            feat_bytes = pickle.dumps(features_vec)
+            if self.fernet:
+                feat_bytes = self.fernet.encrypt(feat_bytes)
+
+            cur = self.conn.cursor()
+            cur.execute("INSERT INTO palm_scans (user_id, image, features) VALUES (?, ?, ?)",
+                        (user_id, img_bytes, feat_bytes))
+            self.conn.commit()
+            return cur.lastrowid
+        except Exception as e:
+            print("DB add_scan error:", e)
+            return None
+
+    def get_all_features(self):
+        cur = self.conn.cursor()
+        cur.execute("SELECT user_id, features FROM palm_scans")
+        rows = cur.fetchall()
+        out = []
+        for uid, feat_blob in rows:
+            try:
+                if self.fernet:
+                    feat_blob = self.fernet.decrypt(feat_blob)
+                feats = pickle.loads(feat_blob)
+                out.append((uid, feats))
+            except Exception as e:
+                print("Error decrypting/reading features:", e)
+        return out
+
+    def save_model(self, model, accuracy):
+        try:
+            model_bytes = pickle.dumps(model)
+            cur = self.conn.cursor()
+            cur.execute("INSERT INTO models (model_data, accuracy) VALUES (?, ?)", (model_bytes, float(accuracy)))
+            self.conn.commit()
+            return cur.lastrowid
+        except Exception as e:
+            print("Error saving model:", e)
+            return None
+
+    def load_latest_model(self):
+        cur = self.conn.cursor()
+        cur.execute("SELECT model_data FROM models ORDER BY created_at DESC LIMIT 1")
+        r = cur.fetchone()
+        if r:
+            try:
+                return pickle.loads(r[0])
+            except Exception as e:
+                print("Error loading model:", e)
+        return None
+
+    def get_user_list(self):
+        cur = self.conn.cursor()
+        cur.execute("SELECT user_id, name FROM users")
+        return cur.fetchall()
+
+    def close(self):
+        self.conn.close()
+
+# -----------------------
+# Feature extraction
+# -----------------------
+class FeatureExtractor:
+    def __init__(self):
+        pass
+
+    @staticmethod
+    def _landmark_np(landmarks):
+        pts = np.zeros((21, 3), dtype=np.float32)
+        for i, lm in enumerate(landmarks.landmark):
+            pts[i, 0] = lm.x
+            pts[i, 1] = lm.y
+            pts[i, 2] = lm.z
+        return pts
+
+    @staticmethod
+    def _angle_between(a, b):
+        # angle in degrees between vectors a and b
+        nu = np.linalg.norm(a) * np.linalg.norm(b) + 1e-9
+        cosv = np.dot(a, b) / nu
+        cosv = np.clip(cosv, -1.0, 1.0)
+        return degrees(np.arccos(cosv))
+
+    def extract(self, landmarks):
+        pts = self._landmark_np(landmarks)  # 21 x 3
+        # Use wrist as origin for normalization
+        wrist = pts[0, :2]
+        # palm size proxy
+        palm_center = pts[9, :2]
+        palm_size = np.linalg.norm(palm_center - wrist) + 1e-6
+
+        # fingertip indices
+        tips = [4, 8, 12, 16, 20]
+        # joints for bend: (MCP, PIP, TIP) indices per finger
+        joints = {
+            'thumb': (2, 3, 4),
+            'index': (5, 6, 8),
+            'middle': (9, 10, 12),
+            'ring': (13, 14, 16),
+            'pinky': (17, 18, 20)
+        }
+
+        feats = []
+
+        # 1. normalized x,y,z for tips and some bases
+        for idx in range(21):
+            rel = (pts[idx] - np.array([wrist[0], wrist[1], 0.0])) / (palm_size + 1e-6)
+            feats.extend(rel.tolist())
+
+        # 2. fingertip-specific normalized positions
+        for t in tips:
+            rel = (pts[t, :2] - wrist) / palm_size
+            feats.extend(rel.tolist())
+
+        # 3. inter-fingertip distances (normalized)
+        for i in range(len(tips)):
+            for j in range(i+1, len(tips)):
+                d = np.linalg.norm(pts[tips[i], :2] - pts[tips[j], :2]) / palm_size
+                feats.append(d)
+
+        # 4. finger bend angles (MCP-PIP-TIP) for each finger
+        for name, (mcp, pip, tip) in joints.items():
+            v1 = pts[mcp] - pts[pip]
+            v2 = pts[tip] - pts[pip]
+            ang = self._angle_between(v1[:2], v2[:2])  # use 2D angle
+            feats.append(ang / 180.0)  # normalized
+
+        # 5. palm aspect ratio and pseudo area
+        index_base = pts[5, :2]
+        pinky_base = pts[17, :2]
+        middle_tip = pts[12, :2]
+        palm_width = np.linalg.norm(index_base - pinky_base) + 1e-6
+        palm_height = abs(middle_tip[1] - wrist[1]) + 1e-6
+        ratio = palm_width / palm_height
+        feats.append(ratio)
+
+        # 6. mean and std of z-values (depth) normalized
+        zmean = np.mean(pts[:, 2])
+        zstd = np.std(pts[:, 2])
+        feats.extend([zmean, zstd])
+
+        return np.array(feats, dtype=np.float32)
+
+# -----------------------
+# System with GUI
+# -----------------------
+class PalmBiometricSystem:
+    def __init__(self):
+        self.db = PalmDatabase()
+        self.featureer = FeatureExtractor()
+
+        self.mp_hands = mp.solutions.hands
+        self.hands = self.mp_hands.Hands(static_image_mode=False,
+                                         max_num_hands=1,
+                                         min_detection_confidence=0.6,
+                                         min_tracking_confidence=0.5)
+        self.mp_draw = mp.solutions.drawing_utils
+
+        self.model = self.db.load_latest_model()
+        self.tts = pyttsx3.init()
+        self.tts.setProperty("rate", 150)
+
+        self.recognize_thread = None
+        self.recognize_running = False
+
+        # smoothing buffer
+        self.buffer = deque(maxlen=8)
+
+    def speak(self, text):
+        def _say():
+            try:
+                self.tts.say(text)
+                self.tts.runAndWait()
+            except Exception as e:
+                print("TTS error:", e)
+        threading.Thread(target=_say, daemon=True).start()
+
+    # ---------- Registration (with GUI friendly behavior) ----------
+    def scan_palm_for_user(self, user_id, num_scans=6):
+        if not self.db.add_user(user_id):
+            self.speak(f"User {user_id} already exists")
+            return 0
+
+        cap = cv2.VideoCapture(0)
+        if not cap.isOpened():
+            self.speak("Cannot open camera")
+            return 0
+
+        self.speak(f"Starting capture for {user_id}. Press 'c' to capture images.")
+        saved = 0
+        while saved < num_scans and cap.isOpened():
+            ret, frame = cap.read()
+            if not ret:
+                break
+            frame = cv2.flip(frame, 1)
+            rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            res = self.hands.process(rgb)
+
+            if res.multi_hand_landmarks:
+                lm = res.multi_hand_landmarks[0]
+                self.mp_draw.draw_landmarks(frame, lm, self.mp_hands.HAND_CONNECTIONS)
+                cv2.putText(frame, f"Press 'c' to capture ({saved}/{num_scans})", (10, 30),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
+            else:
+                cv2.putText(frame, "Show palm clearly", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.8,
+                            (0, 0, 255), 2)
+
+            cv2.imshow(f"Register - {user_id}", frame)
+            k = cv2.waitKey(1) & 0xFF
+            if k == ord('c') and res.multi_hand_landmarks:
+                try:
+                    feats = self.featureer.extract(res.multi_hand_landmarks[0])
+                    sid = self.db.add_scan(user_id, frame, feats)
+                    if sid:
+                        saved += 1
+                        self.speak(f"Captured {saved}")
+                        cv2.imshow("Saved", frame)
+                        cv2.waitKey(250)
+                        cv2.destroyWindow("Saved")
+                except Exception as e:
+                    print("Capture error:", e)
+            elif k == ord('q'):
+                break
+
+        cap.release()
+        cv2.destroyAllWindows()
+        self.speak(f"Saved {saved} scans for {user_id}")
+        return saved
+
+    # ---------- Training ----------
+    def train_model(self):
+        data = self.db.get_all_features()
+        if len(data) < 2:
+            self.speak("Need at least two users with scans to train")
+            return False
+
+        X = []
+        y = []
+        for uid, f in data:
+            X.append(f)
+            y.append(uid)
+        X = np.array(X)
+        y = np.array(y)
+
+        # Candidate models: RandomForest and SVM (with scaling)
+        candidates = []
+
+        rf = make_pipeline(StandardScaler(), RandomForestClassifier(n_estimators=100, max_depth=12))
+        candidates.append(('rf', rf))
+
+        # SVM with probability; calibrate probabilities with CalibratedClassifierCV
+        svm_pipe = make_pipeline(StandardScaler(), SVC(kernel='rbf', probability=True))
+        # wrap with calibration to improve probabilities if needed
+        try:
+            svm_cal = CalibratedClassifierCV(svm_pipe, cv=3)
+            candidates.append(('svm', svm_cal))
+        except Exception:
+            # fallback: use SVC direct (still in pipeline)
+            candidates.append(('svm', svm_pipe))
+
+        best_model = None
+        best_score = 0.0
+        best_name = None
+
+        for name, clf in candidates:
+            try:
+                scores = cross_val_score(clf, X, y, cv=3, scoring='accuracy', n_jobs=-1)
+                mean = float(scores.mean())
+                print(f"Model {name} CV acc: {mean:.4f}")
+                if mean > best_score:
+                    best_score = mean
+                    best_name = name
+                    # fit on full set
+                    clf.fit(X, y)
+                    best_model = clf
+            except Exception as e:
+                print(f"Training {name} failed:", e)
+
+        if best_model is None:
+            self.speak("Training failed")
+            return False
+
+        # Save best model
+        self.model = best_model
+        self.db.save_model(self.model, best_score)
+        self.speak(f"Training complete. Best: {best_name} acc {best_score:.2%}")
+        return True
+
+    # ---------- Recognition ----------
+    def _process_frame_for_prediction(self, frame):
+        rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        res = self.hands.process(rgb)
+        if not res.multi_hand_landmarks:
+            return None, None
+        lm = res.multi_hand_landmarks[0]
+        feats = self.featureer.extract(lm)
+        return feats, lm
+
+    def recognize_loop(self, announce_threshold=0.75, stable_frames=5):
+        if self.model is None:
+            self.speak("No trained model available")
+            return
+
+        cap = cv2.VideoCapture(0)
+        if not cap.isOpened():
+            self.speak("Cannot open camera")
+            return
+
+        self.recognize_running = True
+        self.buffer.clear()
+        last_announced = (None, 0.0, 0)  # (label, score, timestamp)
+
+        while self.recognize_running and cap.isOpened():
+            ret, frame = cap.read()
+            if not ret:
+                break
+            frame = cv2.flip(frame, 1)
+            feats, lm = self._process_frame_for_prediction(frame)
+            if feats is not None:
+                try:
+                    probs = self.model.predict_proba([feats])[0]
+                    pred = self.model.classes_[np.argmax(probs)]
+                    conf = float(np.max(probs))
+                except Exception as e:
+                    # Some models (like CalibratedClassifier) may need different access
+                    try:
+                        pred = self.model.predict([feats])[0]
+                        # no prob available
+                        conf = 1.0
+                    except Exception as e2:
+                        print("Prediction error:", e, e2)
+                        pred, conf = "unknown", 0.0
+
+                # smoothing buffer (store tuples)
+                self.buffer.append((pred, conf, time.time()))
+                # compute weighted vote
+                votes = defaultdict(float)
+                for p, c, _t in self.buffer:
+                    votes[p] += c
+                best = max(votes.items(), key=lambda x: x[1])
+                label, score_sum = best
+                # average confidence
+                avg_conf = score_sum / (len(self.buffer) + 1e-9)
+
+                # draw
+                self.mp_draw.draw_landmarks(frame, lm, self.mp_hands.HAND_CONNECTIONS)
+                cv2.putText(frame, f"{label} ({avg_conf:.0%})", (10, 40),
+                            cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 255, 0), 2)
+
+                # require stability: average confidence above threshold and recent buffer majority
+                if avg_conf > announce_threshold:
+                    # check if same label repeated in last stable_frames
+                    last_k = list(self.buffer)[-stable_frames:]
+                    if len(last_k) >= stable_frames and all(x[0] == label for x in last_k):
+                        # avoid spamming announcements
+                        now = time.time()
+                        if last_announced[0] != label or (now - last_announced[2]) > 3.0:
+                            self.speak(f"Recognized {label}")
+                            last_announced = (label, avg_conf, now)
+            else:
+                cv2.putText(frame, "No hand", (10, 40), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 0, 255), 2)
+
+            cv2.imshow("Palm Recognition (press q to stop)", frame)
+            if cv2.waitKey(1) & 0xFF == ord('q'):
+                break
+
+        self.recognize_running = False
+        cap.release()
+        cv2.destroyAllWindows()
+        self.speak("Recognition stopped")
+
+    def start_recognition_thread(self):
+        if self.recognize_running:
+            return
+        self.recognize_thread = threading.Thread(target=self.recognize_loop, daemon=True)
+        self.recognize_thread.start()
+
+    def stop_recognition(self):
+        self.recognize_running = False
+        if self.recognize_thread:
+            self.recognize_thread.join(timeout=0.5)
+
+    def close(self):
+        self.stop_recognition()
+        self.db.close()
+
+# -----------------------
+# Tkinter GUI
+# -----------------------
+class AppGUI:
+    def __init__(self, root):
+        self.root = root
+        root.title("Palm Biometric System (Demo)")
+        root.geometry("420x320")
+
+        self.system = PalmBiometricSystem()
+
+        self.lbl = tk.Label(root, text="Palm Biometric Demo", font=("Helvetica", 16))
+        self.lbl.pack(pady=8)
+
+        btn_reg = tk.Button(root, text="Register New User", width=28, command=self.register_user)
+        btn_reg.pack(pady=6)
+
+        btn_train = tk.Button(root, text="Train Model", width=28, command=self.train_model)
+        btn_train.pack(pady=6)
+
+        btn_rec = tk.Button(root, text="Start Recognition", width=28, command=self.start_recognition)
+        btn_rec.pack(pady=6)
+
+        btn_stop = tk.Button(root, text="Stop Recognition", width=28, command=self.stop_recognition)
+        btn_stop.pack(pady=6)
+
+        btn_view = tk.Button(root, text="View Users", width=28, command=self.view_users)
+        btn_view.pack(pady=6)
+
+        btn_exit = tk.Button(root, text="Exit", width=28, command=self.exit_app)
+        btn_exit.pack(pady=8)
+
+        self.log = scrolledtext.ScrolledText(root, height=6)
+        self.log.pack(fill="both", expand=True, padx=6, pady=6)
+
+        self.log.insert(tk.END, "Ready.\n")
+
+    def log_msg(self, txt):
+        self.log.insert(tk.END, txt + "\n")
+        self.log.see(tk.END)
+
+    def register_user(self):
+        uid = simpledialog.askstring("Register", "Enter new user ID:", parent=self.root)
+        if not uid:
+            return
+        name = simpledialog.askstring("Register", "Optional: Enter name:", parent=self.root)
+        self.log_msg(f"Registering {uid} ...")
+        threading.Thread(target=self._do_register, args=(uid, name), daemon=True).start()
+
+    def _do_register(self, uid, name):
+        saved = self.system.scan_palm_for_user(uid, num_scans=6)
+        self.log_msg(f"Saved {saved} scans for {uid}")
+
+    def train_model(self):
+        self.log_msg("Training model ... (this may take a while)")
+        threading.Thread(target=self._do_train, daemon=True).start()
+
+    def _do_train(self):
+        ok = self.system.train_model()
+        if ok:
+            self.log_msg("Training finished and model saved.")
+        else:
+            self.log_msg("Training failed. See console for details.")
+
+    def start_recognition(self):
+        self.log_msg("Starting recognition ...")
+        self.system.start_recognition_thread()
+
+    def stop_recognition(self):
+        self.log_msg("Stopping recognition ...")
+        self.system.stop_recognition()
+
+    def view_users(self):
+        users = self.system.db.get_user_list()
+        s = "Registered Users:\n"
+        for uid, name in users:
+            s += f"- {uid}: {name or 'No name'}\n"
+        messagebox.showinfo("Users", s)
+
+    def exit_app(self):
+        if messagebox.askokcancel("Exit", "Are you sure you want to exit?"):
+            self.system.close()
+            self.root.destroy()
+
+if __name__ == "__main__":
+    root = tk.Tk()
+    app = AppGUI(root)
+    root.protocol("WM_DELETE_WINDOW", app.exit_app)
+    root.mainloop()
