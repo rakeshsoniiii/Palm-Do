@@ -1,0 +1,44 @@
+import mongoose from 'mongoose';
+
+const transactionSchema = new mongoose.Schema({
+  transactionId: { 
+    type: String, 
+    unique: true, 
+    index: true, 
+    required: true 
+  },
+  sender: { 
+    type: mongoose.Schema.Types.ObjectId, 
+    ref: 'User', 
+    required: true 
+  },
+  recipient: { 
+    type: mongoose.Schema.Types.ObjectId, 
+    ref: 'User', 
+    required: true 
+  },
+  amount: { 
+    type: Number, 
+    required: true, 
+    min: 1 
+  },
+  note: { 
+    type: String, 
+    maxlength: 200 
+  },
+  status: { 
+    type: String, 
+    enum: ['pending', 'completed', 'failed'], 
+    default: 'completed' 
+  },
+  timestamp: { 
+    type: Date, 
+    default: Date.now 
+  }
+});
+
+// Index for faster queries on sender/recipient and timestamp
+transactionSchema.index({ sender: 1, timestamp: -1 });
+transactionSchema.index({ recipient: 1, timestamp: -1 });
+
+export default mongoose.model('Transaction', transactionSchema);
