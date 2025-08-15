@@ -1,1 +1,65 @@
+import React from 'react';
+import { motion } from 'framer-motion';
+import { ArrowUpDown, QrCode, Scan } from 'lucide-react';
+import Button from '../common/Button';
 
+const BalanceCard = ({ user, balance, onScanClick, onReceiveClick, onRefresh }) => {
+  return (
+    <motion.div 
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ delay: 0.1 }}
+      className="bg-gradient-to-r from-indigo-600 to-purple-600 rounded-xl p-6 text-white shadow-lg"
+    >
+      <div className="flex justify-between items-start">
+        <div>
+          <h2 className="text-lg font-semibold">{user?.name}</h2>
+          <p className="text-sm opacity-90">+91 {user?.phone}</p>
+        </div>
+        <button 
+          onClick={onRefresh}
+          className="p-2 rounded-full bg-white/10 hover:bg-white/20 transition-colors"
+        >
+          <ArrowUpDown size={18} />
+        </button>
+      </div>
+
+      <motion.div 
+        initial={{ scale: 0.95 }}
+        animate={{ scale: 1 }}
+        transition={{ type: 'spring', stiffness: 300 }}
+        className="mt-6 mb-8"
+      >
+        <p className="text-sm opacity-90">Available Balance</p>
+        <h1 className="text-4xl font-bold tracking-tight">
+          ₹{balance?.toLocaleString('en-IN') || '0'}
+        </h1>
+      </motion.div>
+
+      <div className="flex gap-3">
+        <Button 
+          variant="outline" 
+          size="small" 
+          onClick={onScanClick}
+          className="flex-1 gap-2 bg-white/10 hover:bg-white/20 border-white/20"
+        >
+          <Scan size={16} />
+          Scan & Pay
+        </Button>
+        <Button 
+          variant="outline" 
+          size="small" 
+          onClick={onReceiveClick}
+          className="flex-1 gap-2 bg-white/10 hover:bg-white/20 border-white/20"
+        >
+          <QrCode size={16} />
+          Receive
+        </Button>
+      </div>
+
+      <div className="mt-4 text-xs opacity-80">UPI: {user?.upiId}</div>
+    </motion.div>
+  );
+};
+
+export default BalanceCard;
