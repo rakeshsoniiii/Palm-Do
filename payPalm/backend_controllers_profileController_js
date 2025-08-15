@@ -1,0 +1,43 @@
+import User from '../models_User_js';
+import WalletTransaction from '../models_WalletTransaction_js';
+import asyncHandler from '../utils_asyncHandler_js';
+
+export const getProfile = asyncHandler(async (req, res) => {
+  const user = req.user;
+  
+  // Get last 5 transactions for the dashboard
+  const transactions = await WalletTransaction.find({ user: user._id })
+    .sort({ timestamp: -1 })
+    .limit(5);
+
+  res.json({
+    user: {
+      id: user._id,
+      name: user.name,
+      phone: user.phone,
+      balance: user.balance,
+      upiId: user.upiId,
+      lastLogin: user.lastLogin
+    },
+    recentTransactions: transactions
+  });
+});
+
+export const updateProfile = asyncHandler(async (req, res) => {
+  const { name } = req.body;
+  const user = await User.findByIdAndUpdate(
+    req.user._id,
+    { name },
+    { new: true, runValidators: true }
+  );
+
+  res.json({
+    message: 'Profile updated',
+    user: {
+      id: user._id,
+      name: user.name,
+      phone: user.phone,
+      upiId: user.upiId
+    }
+  });
+});
