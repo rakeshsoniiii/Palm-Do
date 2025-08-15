@@ -1,0 +1,29 @@
+import React from 'react';
+import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { ToastProvider } from './contexts_ToastContext_jsx';
+import AuthLayout from './components_auth_AuthLayout_jsx';
+import Login from './pages_auth_Login_jsx';
+import Signup from './pages_auth_Signup_jsx';
+import Dashboard from './pages_dashboard_Dashboard_jsx';
+import Transactions from './pages_dashboard_Transactions_jsx';
+import NotFound from './pages_NotFound_jsx';
+import './styles_globals_css';
+
+function App() {
+  return (
+    <ToastProvider>
+      <BrowserRouter>
+        <Routes>
+          <Route path="/" element={<AuthLayout><Login /></AuthLayout>} />
+          <Route path="/login" element={<AuthLayout><Login /></AuthLayout>} />
+          <Route path="/signup" element={<AuthLayout><Signup /></AuthLayout>} />
+          <Route path="/dashboard" element={<Dashboard />} />
+          <Route path="/transactions" element={<Transactions />} />
+          <Route path="*" element={<NotFound />} />
+        </Routes>
+      </BrowserRouter>
+    </ToastProvider>
+  );
+}
+
+export default App;
