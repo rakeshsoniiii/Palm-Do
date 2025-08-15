@@ -1,1 +1,92 @@
+import React, { useState } from 'react';
+import { motion } from 'framer-motion';
+import { useNavigate } from 'react-router-dom';
+import { useToast } from '../../contexts/ToastContext';
+import API from '../../utils/api';
+import Button from '../../components/common/Button';
+import Input from '../../components/common/Input';
+import AuthLayout from '../../components/auth/AuthLayout';
 
+const Login = () => {
+  const [formData, setFormData] = useState({
+    phone: '',
+    pin: ''
+  });
+  const [loading, setLoading] = useState(false);
+  const navigate = useNavigate();
+  const { addToast } = useToast();
+
+  const handleChange = (e) => {
+    const { name, value } = e.target;
+    setFormData(prev => ({ ...prev, [name]: value }));
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+
+    try {
+      const { data } = await API.post('/login', formData);
+      localStorage.setItem('user', JSON.stringify({
+        ...data.user,
+        token: data.token
+      }));
+      addToast('Login successful!', 'success');
+      navigate('/dashboard');
+    } catch (error) {
+      addToast(error.response?.data?.error || 'Login failed', 'error');
+      console.error(error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <AuthLayout
+      title="Welcome Back"
+      subtitle="Login to your PayEasy account"
+      footerText="Don't have an account?"
+      footerLink="/signup"
+      footerLinkText="Sign up"
+    >
+      <motion.form 
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        onSubmit={handleSubmit}
+        className="space-y-4"
+      >
+        <Input
+          label="Phone Number"
+          name="phone"
+          type="tel"
+          value={formData.phone}
+          onChange={handleChange}
+          placeholder="10 digit phone number"
+          maxLength="10"
+          required
+        />
+
+        <Input
+          label="PIN"
+          name="pin"
+          type="password"
+          value={formData.pin}
+          onChange={handleChange}
+          placeholder="4 digit PIN"
+          maxLength="4"
+          required
+        />
+
+        <Button 
+          type="submit" 
+          className="w-full mt-6" 
+          disabled={loading}
+        >
+          {loading ? 'Logging in...' : 'Login'}
+        </Button>
+      </motion.form>
+    </AuthLayout>
+  );
+};
+
+export default Login;
