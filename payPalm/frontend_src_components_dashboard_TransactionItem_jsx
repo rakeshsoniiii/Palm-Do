@@ -1,0 +1,57 @@
+import React from 'react';
+import { motion } from 'framer-motion';
+import PropTypes from 'prop-types';
+import { ArrowUp, ArrowDown } from 'lucide-react';
+
+const TransactionItem = ({ transaction }) => {
+  return (
+    <motion.li
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="py-3 px-4 hover:bg-gray-50 rounded-lg transition-colors"
+    >
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <div className={`p-2 rounded-full ${
+            transaction.type === 'credit' 
+              ? 'bg-green-100 text-green-600' 
+              : 'bg-red-100 text-red-600'
+          }`}>
+            {transaction.type === 'credit' ? (
+              <ArrowDown size={16} />
+            ) : (
+              <ArrowUp size={16} />
+            )}
+          </div>
+          <div>
+            <h4 className="font-medium text-gray-900">
+              {transaction.description}
+            </h4>
+            <p className="text-xs text-gray-500">
+              {new Date(transaction.timestamp).toLocaleString()}
+            </p>
+          </div>
+        </div>
+        <div className={`font-semibold ${
+          transaction.type === 'credit' 
+            ? 'text-green-600' 
+            : 'text-red-600'
+        }`}>
+          {transaction.type === 'credit' ? '+' : '-'}₹
+          {transaction.amount.toLocaleString('en-IN')}
+        </div>
+      </div>
+    </motion.li>
+  );
+};
+
+TransactionItem.propTypes = {
+  transaction: PropTypes.shape({
+    type: PropTypes.oneOf(['credit', 'debit']).isRequired,
+    description: PropTypes.string.isRequired,
+    timestamp: PropTypes.string.isRequired,
+    amount: PropTypes.number.isRequired,
+  }).isRequired,
+};
+
+export default TransactionItem;
