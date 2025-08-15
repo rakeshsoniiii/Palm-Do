@@ -1,1 +1,64 @@
+import React, { useState } from 'react';
+import { motion } from 'framer-motion';
+import PropTypes from 'prop-types';
+import Input from '../common/Input';
+import Button from '../common/Button';
+import API from '../../utils/api';
+import { useToast } from '../../contexts/ToastContext';
 
+const AddMoneyForm = ({ onSuccess, addToast }) => {
+  const [amount, setAmount] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+
+    try {
+      await API.post('/add-money', { amount: Number(amount) });
+      addToast('Money added successfully!', 'success');
+      setAmount('');
+      onSuccess();
+    } catch (error) {
+      addToast(error.response?.data?.error || 'Failed to add money', 'error');
+      console.error(error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <motion.form
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      onSubmit={handleSubmit}
+      className="space-y-4"
+    >
+      <Input
+        label="Amount to Add (₹)"
+        name="amount"
+        type="number"
+        value={amount}
+        onChange={(e) => setAmount(e.target.value)}
+        placeholder="Enter amount"
+        min="1"
+        required
+      />
+      <Button
+        type="submit"
+        className="w-full"
+        disabled={loading || !amount}
+        loading={loading}
+      >
+        {loading ? 'Adding...' : 'Add Money'}
+      </Button>
+    </motion.form>
+  );
+};
+
+AddMoneyForm.propTypes = {
+  onSuccess: PropTypes.func.isRequired,
+  addToast: PropTypes.func.isRequired,
+};
+
+export default AddMoneyForm;
