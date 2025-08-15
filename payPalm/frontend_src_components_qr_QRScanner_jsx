@@ -1,1 +1,67 @@
+import React, { useEffect, useRef } from 'react';
+import { Html5Qrcode } from 'html5-qrcode';
+import { motion } from 'framer-motion';
+import { X } from 'lucide-react';
 
+const QRScanner = ({ onResult, onClose }) => {
+  const scannerRef = useRef(null);
+  const scanner = useRef(null);
+
+  useEffect(() => {
+    if (!scannerRef.current) return;
+
+    scanner.current = new Html5Qrcode(scannerRef.current.id);
+    const config = { fps: 10, qrbox: { width: 250, height: 250 } };
+
+    const startScanner = async () => {
+      try {
+        await scanner.current.start(
+          { facingMode: "environment" },
+          config,
+          (decodedText) => {
+            onResult(decodedText);
+            scanner.current.stop().catch(() => {});
+          },
+          () => {}
+        );
+      } catch (err) {
+        console.error("QR Scanner error:", err);
+      }
+    };
+
+    startScanner();
+
+    return () => {
+      if (scanner.current && scanner.current.isScanning) {
+        scanner.current.stop().catch(() => {});
+      }
+    };
+  }, [onResult]);
+
+  return (
+    <motion.div 
+      initial={{ opacity: 0, scale: 0.95 }}
+      animate={{ opacity: 1, scale: 1 }}
+      className="relative bg-black rounded-lg overflow-hidden"
+    >
+      <div id="qr-scanner" ref={scannerRef} className="w-full h-full" />
+      
+      <div className="absolute inset-0 flex items-center justify-center">
+        <div className="border-2 border-white/50 rounded-lg w-64 h-64 pointer-events-none"></div>
+      </div>
+      
+      <button
+        onClick={onClose}
+        className="absolute top-4 right-4 p-2 bg-black/50 rounded-full text-white hover:bg-black/70 transition-colors"
+      >
+        <X size={24} />
+      </button>
+      
+      <div className="absolute bottom-6 left-0 right-0 text-center text-white">
+        <p className="text-sm">Scan a PayEasy QR code</p>
+      </div>
+    </motion.div>
+  );
+};
+
+export default QRScanner;
