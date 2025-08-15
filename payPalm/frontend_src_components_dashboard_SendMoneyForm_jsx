@@ -1,1 +1,150 @@
+import React, { useState } from 'react';
+import { motion } from 'framer-motion';
+import { ArrowRight, Scan } from 'lucide-react';
+import Button from '../common/Button';
+import Input from '../common/Input';
 
+const SendMoneyForm = ({ user, onSuccess, addToast }) => {
+  const [formData, setFormData] = useState({
+    recipientPhone: '',
+    toUpiId: '',
+    amount: '',
+    note: '',
+    pin: ''
+  });
+  const [loading, setLoading] = useState(false);
+  const [activeTab, setActiveTab] = useState('phone');
+
+  const handleChange = (e) => {
+    const { name, value } = e.target;
+    setFormData(prev => ({ ...prev, [name]: value }));
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+
+    try {
+      const idempotencyKey = crypto.randomUUID();
+      const body = { 
+        recipientPhone: formData.recipientPhone,
+        toUpiId: formData.toUpiId,
+        amount: Number(formData.amount),
+        note: formData.note,
+        pin: formData.pin
+      };
+
+      const { data } = await API.post('/transfer', body, { 
+        headers: { 'Idempotency-Key': idempotencyKey } 
+      });
+
+      addToast(`Transfer successful! TXN: ${data.transaction.id}`, 'success');
+      onSuccess();
+      setFormData({
+        recipientPhone: '',
+        toUpiId: '',
+        amount: '',
+        note: '',
+        pin: ''
+      });
+    } catch (error) {
+      addToast(error.response?.data?.error || 'Transfer failed', 'error');
+      console.error(error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <motion.div 
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ delay: 0.2 }}
+      className="bg-white rounded-xl p-6 shadow"
+    >
+      <h2 className="text-lg font-semibold mb-4">Send Money</h2>
+      
+      <div className="flex border-b mb-4">
+        <button
+          className={`px-4 py-2 font-medium ${activeTab === 'phone' ? 'text-indigo-600 border-b-2 border-indigo-600' : 'text-gray-500'}`}
+          onClick={() => setActiveTab('phone')}
+        >
+          Phone Number
+        </button>
+        <button
+          className={`px-4 py-2 font-medium ${activeTab === 'upi' ? 'text-indigo-600 border-b-2 border-indigo-600' : 'text-gray-500'}`}
+          onClick={() => setActiveTab('upi')}
+        >
+          UPI ID
+        </button>
+      </div>
+
+      <form onSubmit={handleSubmit} className="space-y-4">
+        {activeTab === 'phone' ? (
+          <Input
+            label="Recipient Phone"
+            name="recipientPhone"
+            type="tel"
+            value={formData.recipientPhone}
+            onChange={handleChange}
+            placeholder="10 digit phone number"
+            maxLength="10"
+            required
+          />
+        ) : (
+          <Input
+            label="Recipient UPI ID"
+            name="toUpiId"
+            type="text"
+            value={formData.toUpiId}
+            onChange={handleChange}
+            placeholder="e.g., 9876543210@payeasy"
+            required
+          />
+        )}
+
+        <Input
+          label="Amount (₹)"
+          name="amount"
+          type="number"
+          value={formData.amount}
+          onChange={handleChange}
+          placeholder="Enter amount"
+          min="1"
+          required
+        />
+
+        <Input
+          label="Note (Optional)"
+          name="note"
+          type="text"
+          value={formData.note}
+          onChange={handleChange}
+          placeholder="e.g., For dinner"
+        />
+
+        <Input
+          label="Your PIN"
+          name="pin"
+          type="password"
+          value={formData.pin}
+          onChange={handleChange}
+          placeholder="4 digit PIN"
+          maxLength="4"
+          required
+        />
+
+        <Button 
+          type="submit" 
+          className="w-full gap-2" 
+          disabled={loading}
+        >
+          {loading ? 'Processing...' : 'Send Money'} 
+          <ArrowRight size={18} />
+        </Button>
+      </form>
+    </motion.div>
+  );
+};
+
+export default SendMoneyForm;
