@@ -1,0 +1,9 @@
+import { Router } from 'express';
+import auth from '../middleware_auth_js';
+import { getProfile, updateProfile } from '../controllers_profileController_js';
+const router = Router();
+
+router.get('/', auth, getProfile);
+router.patch('/', auth, updateProfile);
+
+export default router;
