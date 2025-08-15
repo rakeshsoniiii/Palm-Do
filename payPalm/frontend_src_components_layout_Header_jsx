@@ -1,0 +1,44 @@
+import React from 'react';
+import { motion } from 'framer-motion';
+import PropTypes from 'prop-types';
+import { LogOut } from 'lucide-react';
+import Button from '../common/Button';
+
+const Header = ({ user, onLogout }) => {
+  return (
+    <motion.header
+      initial={{ opacity: 0, y: -20 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="bg-white shadow-sm"
+    >
+      <div className="container mx-auto px-4 py-4 flex justify-between items-center">
+        <motion.div
+          initial={{ scale: 0.9 }}
+          animate={{ scale: 1 }}
+          className="text-xl font-bold text-indigo-600"
+        >
+          PayEasy
+        </motion.div>
+        <div className="flex items-center gap-4">
+          <div className="hidden sm:block text-sm text-gray-600">
+            Hi, {user?.name}
+          </div>
+          <Button
+            variant="ghost"
+            size="small"
+            onClick={onLogout}
+            icon={LogOut}
+            className="text-gray-600 hover:text-gray-900"
+          />
+        </div>
+      </div>
+    </motion.header>
+  );
+};
+
+Header.propTypes = {
+  user: PropTypes.object,
+  onLogout: PropTypes.func.isRequired,
+};
+
+export default Header;
