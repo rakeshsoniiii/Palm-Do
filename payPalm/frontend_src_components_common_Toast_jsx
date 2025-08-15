@@ -1,1 +1,44 @@
+import React, { useEffect } from 'react';
+import { motion } from 'framer-motion';
+import { X } from 'lucide-react';
 
+const Toast = ({ message, type = 'info', onClose }) => {
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      onClose();
+    }, 5000);
+
+    return () => clearTimeout(timer);
+  }, [onClose]);
+
+  const bgColors = {
+    success: 'bg-green-100 border-green-200 text-green-800',
+    error: 'bg-red-100 border-red-200 text-red-800',
+    warning: 'bg-yellow-100 border-yellow-200 text-yellow-800',
+    info: 'bg-blue-100 border-blue-200 text-blue-800',
+  };
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: -20 }}
+      transition={{ duration: 0.3 }}
+      className={`fixed bottom-4 right-4 z-50 p-4 rounded-lg border shadow-lg max-w-sm ${bgColors[type]}`}
+    >
+      <div className="flex items-start justify-between gap-4">
+        <div className="flex-1">
+          <p className="font-medium">{message}</p>
+        </div>
+        <button 
+          onClick={onClose}
+          className="p-1 rounded-full hover:bg-white/20 transition-colors"
+        >
+          <X size={16} />
+        </button>
+      </div>
+    </motion.div>
+  );
+};
+
+export default Toast;
