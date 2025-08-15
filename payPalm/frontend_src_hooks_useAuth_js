@@ -1,0 +1,50 @@
+import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
+import API from '../utils/api';
+
+const useAuth = () => {
+  const [user, setUser] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    const checkAuth = async () => {
+      try {
+        const storedUser = JSON.parse(localStorage.getItem('user'));
+        if (!storedUser?.token) {
+          navigate('/login');
+          return;
+        }
+
+        const { data } = await API.get('/me');
+        setUser(data.user);
+      } catch (error) {
+        localStorage.removeItem('user');
+        navigate('/login');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    checkAuth();
+  }, [navigate]);
+
+  const login = async (credentials) => {
+    const { data } = await API.post('/login', credentials);
+    localStorage.setItem('user', JSON.stringify({
+      ...data.user,
+      token: data.token
+    }));
+    setUser(data.user);
+  };
+
+  const logout = () => {
+    localStorage.removeItem('user');
+    setUser(null);
+    navigate('/login');
+  };
+
+  return { user, loading, login, logout };
+};
+
+export default useAuth;
