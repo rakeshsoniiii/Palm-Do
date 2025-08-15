@@ -1,0 +1,54 @@
+frontend/
+  ├─ public/
+  │  └─ assets/ (for images, fonts, etc)
+  ├─ src/
+  │  ├─ assets/ (for SVG icons, etc)
+  │  ├─ components/
+  │  │  ├─ common/
+  │  │  │  ├─ Button.jsx
+  │  │  │  ├─ Input.jsx
+  │  │  │  ├─ Modal.jsx
+  │  │  │  ├─ Toast.jsx
+  │  │  │  └─ Loader.jsx
+  │  │  ├─ auth/
+  │  │  │  ├─ AuthLayout.jsx
+  │  │  │  └─ AuthForm.jsx
+  │  │  ├─ dashboard/
+  │  │  │  ├─ BalanceCard.jsx
+  │  │  │  ├─ TransactionItem.jsx
+  │  │  │  ├─ AddMoneyForm.jsx
+  │  │  │  └─ SendMoneyForm.jsx
+  │  │  ├─ qr/
+  │  │  │  ├─ QRGenerator.jsx
+  │  │  │  └─ QRScanner.jsx
+  │  │  └─ layout/
+  │  │     ├─ Header.jsx
+  │  │     └─ Footer.jsx
+  │  ├─ contexts/
+  │  │  ├─ AuthContext.jsx
+  │  │  └─ ToastContext.jsx
+  │  ├─ hooks/
+  │  │  ├─ useAuth.js
+  │  │  └─ useToast.js
+  │  ├─ pages/
+  │  │  ├─ auth/
+  │  │  │  ├─ Login.jsx
+  │  │  │  └─ Signup.jsx
+  │  │  ├─ dashboard/
+  │  │  │  ├─ Dashboard.jsx
+  │  │  │  └─ Transactions.jsx
+  │  │  └─ NotFound.jsx
+  │  ├─ styles/
+  │  │  ├─ animations.css
+  │  │  ├─ globals.css
+  │  │  └─ tailwind.css
+  │  ├─ utils/
+  │  │  ├─ api.js
+  │  │  ├─ upi.js
+  │  │  └─ helpers.js
+  │  ├─ App.jsx
+  │  ├─ main.jsx
+  │  └─ routes.jsx
+  ├─ tailwind.config.js
+  ├─ postcss.config.js
+  └─ vite.config.js
