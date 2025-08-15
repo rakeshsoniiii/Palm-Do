@@ -1,1 +1,86 @@
+import React, { useEffect, useRef, useState } from 'react';
+import QRCode from 'qrcode';
+import { motion } from 'framer-motion';
+import { Copy, Download } from 'lucide-react';
+import Button from '../common/Button';
+import { buildIntent } from '../../utils/upi';
 
+const QRGenerator = ({ myUpiId, defaultAmount = 0, note = '' }) => {
+  const canvasRef = useRef(null);
+  const [intent, setIntent] = useState('');
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    const newIntent = buildIntent({ toUpiId: myUpiId, amount: defaultAmount, note });
+    setIntent(newIntent);
+
+    if (canvasRef.current) {
+      QRCode.toCanvas(canvasRef.current, newIntent, { width: 256, margin: 1 }, (error) => {
+        if (error) console.error('QR generation error:', error);
+      });
+    }
+  }, [myUpiId, defaultAmount, note]);
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(intent);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  const handleDownload = () => {
+    if (!canvasRef.current) return;
+    
+    const link = document.createElement('a');
+    link.download = 'payeasy-qr.png';
+    link.href = canvasRef.current.toDataURL('image/png');
+    link.click();
+  };
+
+  return (
+    <motion.div 
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="flex flex-col items-center space-y-4"
+    >
+      <div className="p-4 bg-white rounded-lg border border-gray-200">
+        <canvas ref={canvasRef} />
+      </div>
+      
+      <div className="w-full max-w-xs">
+        <div className="bg-gray-100 p-3 rounded-lg break-all text-xs font-mono relative">
+          {intent}
+          <button 
+            onClick={handleCopy}
+            className="absolute top-2 right-2 p-1 bg-white rounded hover:bg-gray-200 transition-colors"
+            title="Copy"
+          >
+            <Copy size={14} />
+          </button>
+        </div>
+      </div>
+      
+      <div className="flex gap-2">
+        <Button 
+          variant="outline" 
+          size="small" 
+          onClick={handleCopy}
+          className="gap-2"
+        >
+          <Copy size={16} />
+          {copied ? 'Copied!' : 'Copy'}
+        </Button>
+        <Button 
+          variant="outline" 
+          size="small" 
+          onClick={handleDownload}
+          className="gap-2"
+        >
+          <Download size={16} />
+          Download
+        </Button>
+      </div>
+    </motion.div>
+  );
+};
+
+export default QRGenerator;
