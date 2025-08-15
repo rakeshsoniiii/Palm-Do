@@ -1,1 +1,147 @@
+import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
+import API from '../../utils/api';
+import { useToast } from '../../contexts/ToastContext';
+import BalanceCard from '../../components/dashboard/BalanceCard';
+import SendMoneyForm from '../../components/dashboard/SendMoneyForm';
+import AddMoneyForm from '../../components/dashboard/AddMoneyForm';
+import TransactionList from '../../components/dashboard/TransactionList';
+import QRScanner from '../../components/qr/QRScanner';
+import QRGenerator from '../../components/qr/QRGenerator';
+import { parseIntent } from '../../utils/upi';
+import Modal from '../../components/common/Modal';
+import Header from '../../components/layout/Header';
 
+const Dashboard = () => {
+  const [user, setUser] = useState(null);
+  const [balance, setBalance] = useState(0);
+  const [showScan, setShowScan] = useState(false);
+  const [showReceive, setShowReceive] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [transactions, setTransactions] = useState([]);
+  const navigate = useNavigate();
+  const { addToast } = useToast();
+
+  useEffect(() => {
+    const loadData = async () => {
+      try {
+        const userData = JSON.parse(localStorage.getItem('user'));
+        if (!userData || !userData.token) {
+          navigate('/login');
+          return;
+        }
+
+        await refreshData();
+      } catch (error) {
+        addToast('Failed to load data', 'error');
+        console.error(error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadData();
+  }, []);
+
+  const refreshData = async () => {
+    try {
+      const [balanceRes, userRes, transactionsRes] = await Promise.all([
+        API.get('/balance'),
+        API.get('/me'),
+        API.get('/transactions?limit=5')
+      ]);
+
+      setBalance(balanceRes.data.balance);
+      setUser(userRes.data.user);
+      setTransactions(transactionsRes.data.transactions);
+      localStorage.setItem('user', JSON.stringify({
+        ...userRes.data.user,
+        token: localStorage.getItem('user')?.token
+      }));
+    } catch (error) {
+      addToast('Failed to refresh data', 'error');
+      console.error(error);
+    }
+  };
+
+  const handleScanResult = (decoded) => {
+    const intent = parseIntent(decoded);
+    if (!intent) {
+      addToast('Invalid QR code', 'error');
+      return;
+    }
+    
+    setShowScan(false);
+    addToast('QR scanned successfully', 'success');
+    // You can pass this data to SendMoneyForm
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem('user');
+    navigate('/login');
+    addToast('Logged out successfully', 'success');
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-indigo-600"></div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-gray-50 pb-20">
+      <Header user={user} onLogout={handleLogout} />
+      
+      <div className="container mx-auto px-4 py-6">
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ duration: 0.5 }}
+          className="space-y-6"
+        >
+          <BalanceCard 
+            user={user} 
+            balance={balance} 
+            onScanClick={() => setShowScan(true)}
+            onReceiveClick={() => setShowReceive(true)}
+            onRefresh={refreshData}
+          />
+
+          <SendMoneyForm 
+            user={user} 
+            onSuccess={refreshData} 
+            addToast={addToast} 
+          />
+
+          <AddMoneyForm 
+            onSuccess={refreshData} 
+            addToast={addToast} 
+          />
+
+          <TransactionList 
+            transactions={transactions} 
+            onViewAll={() => navigate('/transactions')} 
+          />
+        </motion.div>
+      </div>
+
+      <Modal isOpen={showScan} onClose={() => setShowScan(false)}>
+        <QRScanner onResult={handleScanResult} onClose={() => setShowScan(false)} />
+      </Modal>
+
+      <Modal isOpen={showReceive} onClose={() => setShowReceive(false)}>
+        <div className="p-4">
+          <h3 className="text-lg font-medium mb-4">Receive Payment</h3>
+          <QRGenerator myUpiId={user?.upiId} />
+          <div className="mt-4 text-center text-sm text-gray-600">
+            Share this QR code to receive payments
+          </div>
+        </div>
+      </Modal>
+    </div>
+  );
+};
+
+export default Dashboard;
