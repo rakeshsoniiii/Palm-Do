@@ -1,0 +1,111 @@
+import React, { useState } from 'react';
+import { motion } from 'framer-motion';
+import { Link, useNavigate } from 'react-router-dom';
+import { useToast } from '../../contexts_ToastContext_jsx';
+import API from '../../utils_api_js';
+import Input from '../../components_common_Input_jsx';
+import Button from '../../components_common_Button_jsx';
+import AuthLayout from '../../components_auth_AuthLayout_jsx';
+
+const Signup = () => {
+  const [formData, setFormData] = useState({
+    name: '',
+    phone: '',
+    pin: '',
+    confirmPin: ''
+  });
+  const [loading, setLoading] = useState(false);
+  const navigate = useNavigate();
+  const { addToast } = useToast();
+
+  const handleChange = (e) => {
+    const { name, value } = e.target;
+    setFormData(prev => ({ ...prev, [name]: value }));
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+
+    try {
+      const { data } = await API.post('/register', formData);
+      addToast('Registration successful! Please login.', 'success');
+      navigate('/login');
+    } catch (error) {
+      addToast(error.response?.data?.error || 'Registration failed', 'error');
+      console.error(error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <AuthLayout
+      title="Create Account"
+      subtitle="Join PayEasy today"
+      footerText="Already have an account?"
+      footerLink="/login"
+      footerLinkText="Login"
+    >
+      <motion.form 
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        onSubmit={handleSubmit}
+        className="space-y-4"
+      >
+        <Input
+          label="Full Name"
+          name="name"
+          type="text"
+          value={formData.name}
+          onChange={handleChange}
+          placeholder="Enter your full name"
+          required
+        />
+
+        <Input
+          label="Phone Number"
+          name="phone"
+          type="tel"
+          value={formData.phone}
+          onChange={handleChange}
+          placeholder="10 digit phone number"
+          maxLength="10"
+          required
+        />
+
+        <Input
+          label="PIN"
+          name="pin"
+          type="password"
+          value={formData.pin}
+          onChange={handleChange}
+          placeholder="4 digit PIN"
+          maxLength="4"
+          required
+        />
+
+        <Input
+          label="Confirm PIN"
+          name="confirmPin"
+          type="password"
+          value={formData.confirmPin}
+          onChange={handleChange}
+          placeholder="Confirm your PIN"
+          maxLength="4"
+          required
+        />
+
+        <Button 
+          type="submit" 
+          className="w-full mt-6" 
+          disabled={loading}
+        >
+          {loading ? 'Registering...' : 'Create Account'}
+        </Button>
+      </motion.form>
+    </AuthLayout>
+  );
+};
+
+export default Signup;
