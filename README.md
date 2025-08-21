@@ -102,22 +102,22 @@ PalmPay/
 ## 🔧 Installation & Usage
 
 ### 1. Clone the Repository
-
+```
 git clone https://github.com/username/palmpay.git
 cd palmpay
-
+```
 ### 2. Setup Backend (FastAPI)
-
+```
 cd backend
 pip install -r requirements.txt
 uvicorn app:app --reload
-
+```
 ### 3. Setup Frontend (React)
-
+```
 cd frontend
 npm install
 npm start
-
+```
 ### 4. Open in Browser
 
 Visit:
