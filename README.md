@@ -68,7 +68,7 @@ Palm Pay isn’t just about payments — it integrates **safety, inclusivity, ac
 
 ## 📂 Project Structure
 
-```plaintext
+
 PalmPay/
 │── backend/
 │   ├── app.py                # FastAPI server
@@ -157,7 +157,7 @@ Beyond Payments: Functions as a universal digital ID and contactless access syst
 Palm Pay isn’t just a payment app — it’s a platform that merges security, identity, inclusivity, and personalization into one AI-driven ecosystem.
 
 
----
+
 
 🏆 Why Palm Pay Can Win AI Contests
 
@@ -210,4 +210,4 @@ Future-Ready: Integrates with wearables, AR glasses, and IoT.
 
 
 
----
+
