@@ -177,7 +177,7 @@ Future-Ready: Integrates with wearables, AR glasses, and IoT.
 
 ## 📸 Demo Flow
 
-![Palm Pay — Demo Flow](docs/Demoflow.png)
+![Palm Pay — Demo Flow](Demoflow.png)
 
 1. User shows palm → Palm Pay recognizes and fetches ID/payment profile.
 
