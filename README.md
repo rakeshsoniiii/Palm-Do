@@ -68,7 +68,7 @@ Palm Pay isn’t just about payments — it integrates **safety, inclusivity, ac
 
 ## 📂 Project Structure
 
-
+```
 PalmPay/
 │── backend/
 │   ├── app.py                # FastAPI server
@@ -123,7 +123,7 @@ npm start
 Visit:
 
 http://localhost:3000
-
+```
 
 ---
 
