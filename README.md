@@ -175,22 +175,19 @@ Future-Ready: Integrates with wearables, AR glasses, and IoT.
 
 ---
 
-📸 Demo Flow
+## 📸 Demo Flow
+
+![Palm Pay — Demo Flow](docs/Demoflow.png)
 
 1. User shows palm → Palm Pay recognizes and fetches ID/payment profile.
 
-
 2. User says “Pay 100 to Amit” (voice input).
-
 
 3. Palm Pay asks for gesture PIN → e.g., “show 2 fingers”.
 
-
 4. User shows gesture → system verifies liveness (movement/angle).
 
-
 5. Payment confirmed ✅ within 7 seconds.
-
 
 
 
