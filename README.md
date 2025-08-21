@@ -99,26 +99,26 @@ PalmPay/
 ```
 ---
 
-##🔧 Installation & Usage
+## 🔧 Installation & Usage
 
-###1. Clone the Repository
+### 1. Clone the Repository
 
 git clone https://github.com/username/palmpay.git
 cd palmpay
 
-###2. Setup Backend (FastAPI)
+### 2. Setup Backend (FastAPI)
 
 cd backend
 pip install -r requirements.txt
 uvicorn app:app --reload
 
-###3. Setup Frontend (React)
+### 3. Setup Frontend (React)
 
 cd frontend
 npm install
 npm start
 
-###4. Open in Browser
+### 4. Open in Browser
 
 Visit:
 
@@ -127,7 +127,7 @@ http://localhost:3000
 
 ---
 
-##📊 Constraints & Design Choices
+## 📊 Constraints & Design Choices
 
 Must work on regular cameras (no infrared/palm-vein scanners).
 
@@ -141,7 +141,7 @@ Free & Open-Source Tools First: All major AI components run with free libraries/
 
 ---
 
-##🌍 Real-World Impact & Contest Value
+## 🌍 Real-World Impact & Contest Value
 
 Financial Inclusion: Works in rural areas with low-cost smartphones.
 
@@ -159,7 +159,7 @@ Palm Pay isn’t just a payment app — it’s a platform that merges security, 
 
 
 
-##🏆 Why Palm Pay Can Win AI Contests
+## 🏆 Why Palm Pay Can Win AI Contests
 
 Innovation: A first-of-its-kind multi-modal palm + voice + gesture payment system.
 
@@ -191,9 +191,9 @@ Future-Ready: Integrates with wearables, AR glasses, and IoT.
 
 
 
----
 
-##✅ Future Roadmap
+
+## ✅ Future Roadmap
 
 🔹 Blockchain-based audit trails for transaction security.
 
