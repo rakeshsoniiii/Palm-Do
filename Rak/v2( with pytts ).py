@@ -31,40 +31,19 @@ EMBEDDINGS_FILE = "palm_embeddings.npy"
 IMAGES_FILE = "palm_images.npy"
 LABELS_FILE = "palm_labels.npy"
 
-# Global TTS engine to avoid initialization issues
-tts_engine = None
-
-def init_tts():
-    """Initialize the TTS engine once"""
-    global tts_engine
-    if tts_engine is None:
-        try:
-            tts_engine = pyttsx3.init()
-            # Set properties (optional)
-            tts_engine.setProperty('rate', 150)  # Speed percent
-            tts_engine.setProperty('volume', 0.9)  # Volume 0-1
-        except Exception as e:
-            print("TTS initialization error:", e)
-            tts_engine = None
-    return tts_engine
-
 def speak(text):
     """Voice assistant via pyttsx3 (non-blocking)"""
-    print(text)  # Always print for fallback
     
-    def _speak():
+    print(text)  # Fallback to print in addition to speech
+    def _s():
         try:
-            engine = init_tts()
-            if engine:
-                engine.say(text)
-                engine.runAndWait()
-            else:
-                print("TTS engine not available")
+            engine = pyttsx3.init()
+            engine.say(text)
+            engine.runAndWait()
         except Exception as e:
             print("TTS error:", e)
-    
-    # Run in a thread to avoid blocking
-    threading.Thread(target=_speak, daemon=True).start()
+    threading.Thread(target=_s, daemon=True).start()
+
 
 
 class PalmBiometricSystem:
@@ -100,16 +79,18 @@ class PalmBiometricSystem:
 
         # Model
         self.model = None
-        self.label_mapping = []
 
         # Flags
         self.capture_running = False
         self.recognize_running = False
-        self.auto_training = True  # Enable auto-training by default
+        self.auto_training = False
 
         # Load if available
         self.load_data()
         self.build_embedding_model()
+
+        # Timers for non-repetitive speaking
+        self.last_wrong_hand_speak_time = 0
 
     def build_embedding_model(self):
         """Build a simple CNN model for palm embeddings"""
@@ -325,7 +306,6 @@ class PalmBiometricSystem:
         saved = 0
         start_time = time.time()
         last_capture_time = 0
-        wrong_hand_warning_time = 0
 
         while saved < num_scans and cap.isOpened():
             ret, frame = cap.read()
@@ -341,11 +321,9 @@ class PalmBiometricSystem:
                 # Check if it's a right hand
                 if not self.is_right_hand(landmarks):
                     current_time = time.time()
-                    # Only speak warning every 5 seconds to avoid spamming
-                    if current_time - wrong_hand_warning_time > 5:
-                        speak("Please use your right hand, not your left hand")
-                        wrong_hand_warning_time = current_time
-                    
+                    if current_time - self.last_wrong_hand_speak_time >= 5:  # Speak every 5 seconds max
+                        speak("Please use your right palm, not left")
+                        self.last_wrong_hand_speak_time = current_time
                     cv2.putText(frame, "Please use your RIGHT hand", (10, 30), 
                                cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 255), 2)
                     cv2.imshow(f"Registering: {user_id}", frame)
@@ -379,7 +357,6 @@ class PalmBiometricSystem:
                         
                         # Auto-train if we have enough samples
                         if saved == num_scans and self.auto_training:
-                            speak("Training model with captured data")
                             self.train_model()
                             
                     except Exception as e:
@@ -458,7 +435,7 @@ class PalmBiometricSystem:
             # Evaluate the model
             val_acc = history.history['val_accuracy'][-1]
             print(f"Model trained with validation accuracy: {val_acc:.3f}")
-            speak(f"Model trained successfully with accuracy {val_acc:.2f}")
+            speak(f"Model trained with accuracy {val_acc:.2f}")
             
             return True
         except Exception as e:
@@ -485,7 +462,6 @@ class PalmBiometricSystem:
         speak("Starting recognition. Press q to quit.")
         print("Starting recognition. Press 'q' to quit.")
         recent_predictions = []
-        wrong_hand_warning_time = 0
         
         while self.recognize_running and cap.isOpened():
             ret, frame = cap.read()
@@ -501,11 +477,9 @@ class PalmBiometricSystem:
                 # Check if it's a right hand
                 if not self.is_right_hand(lm):
                     current_time = time.time()
-                    # Only speak warning every 5 seconds to avoid spamming
-                    if current_time - wrong_hand_warning_time > 5:
-                        speak("Please use your right hand, not your left hand")
-                        wrong_hand_warning_time = current_time
-                    
+                    if current_time - self.last_wrong_hand_speak_time >= 5:  # Speak every 5 seconds max
+                        speak("Please use your right palm, not left")
+                        self.last_wrong_hand_speak_time = current_time
                     cv2.putText(frame, "Please use your RIGHT hand", (10, 30), 
                                cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 255), 2)
                     cv2.imshow("Palm Recognition - press q to quit", frame)
@@ -585,7 +559,7 @@ class PalmBiometricSystem:
                 self.model.save(model_file)
                 
             print(f"Saved data to files")
-            speak("Data saved successfully")
+            speak("Data saved")
             return True
         except Exception as e:
             print("Save failed:", e)
@@ -663,7 +637,6 @@ class PalmBiometricSystem:
                 if os.path.exists(labels_file):
                     all_labels = np.load(labels_file, allow_pickle=True)
                     self.label_mapping = list(set(all_labels))
-                    speak("Model loaded successfully")
             except Exception as e:
                 print("Failed to load model:", e)
         else:
@@ -682,9 +655,6 @@ class PalmApp:
         root.geometry("420x320")
         self.sys = PalmBiometricSystem()
         self.sys.auto_training = True  # Enable auto-training
-
-        # Initialize TTS
-        init_tts()
 
         # Buttons
         btn_register = tk.Button(root, text="Register New User", width=25, command=self.register_user)
@@ -794,6 +764,7 @@ def main():
 
 
 if __name__ == "__main__":
+
     # If packages missing, the import at top will already fail; handle at runtime.
     try:
         main()
