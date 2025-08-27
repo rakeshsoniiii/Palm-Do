@@ -1,0 +1,896 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cosmic Guide - AI Astrologer</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+
+        body {
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            color: #fff;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        .header h1 {
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+            background: linear-gradient(45deg, #6a11cb, #2575fc);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .header p {
+            color: #a1a8c9;
+            font-size: 1.1rem;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 1200px;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .popup-options {
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(10px);
+            border-radius: 15px;
+            padding: 25px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .popup-options h2 {
+            text-align: center;
+            margin-bottom: 20px;
+            color: #6a89cc;
+        }
+
+        .options-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+        }
+
+        .option-card {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 12px;
+            padding: 20px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .option-card:hover {
+            background: rgba(255, 255, 255, 0.15);
+            transform: translateY(-5px);
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
+        }
+
+        .option-card i {
+            font-size: 2rem;
+            color: #6a89cc;
+        }
+
+        .option-card h3 {
+            font-size: 1.1rem;
+            font-weight: 500;
+        }
+
+        .chat-container {
+            display: flex;
+            gap: 20px;
+            flex-direction: column;
+        }
+
+        @media (min-width: 768px) {
+            .chat-container {
+                flex-direction: row;
+            }
+        }
+
+        .user-info {
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(10px);
+            border-radius: 15px;
+            padding: 25px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            flex: 1;
+        }
+
+        .user-info h2 {
+            text-align: center;
+            margin-bottom: 20px;
+            color: #6a89cc;
+        }
+
+        .form-group {
+            margin-bottom: 15px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            color: #a1a8c9;
+        }
+
+        .form-group input {
+            width: 100%;
+            padding: 12px;
+            border-radius: 8px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            background: rgba(0, 0, 0, 0.2);
+            color: white;
+        }
+
+        .zodiac-info {
+            margin-top: 20px;
+            padding: 15px;
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 10px;
+            text-align: center;
+        }
+
+        .zodiac-info h3 {
+            color: #6a89cc;
+            margin-bottom: 10px;
+        }
+
+        .chat-interface {
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(10px);
+            border-radius: 15px;
+            padding: 25px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            flex: 2;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .chat-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .chat-header h2 {
+            color: #6a89cc;
+        }
+
+        .palm-reading-btn {
+            background: linear-gradient(45deg, #6a11cb, #2575fc);
+            color: white;
+            border: none;
+            padding: 10px 15px;
+            border-radius: 8px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            transition: all 0.3s ease;
+        }
+
+        .palm-reading-btn:hover {
+            opacity: 0.9;
+            transform: scale(1.05);
+        }
+
+        .chat-messages {
+            flex: 1;
+            height: 300px;
+            overflow-y: auto;
+            padding: 15px;
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 10px;
+            margin-bottom: 15px;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        .message {
+            padding: 12px 15px;
+            border-radius: 10px;
+            max-width: 80%;
+            line-height: 1.5;
+        }
+
+        .bot-message {
+            background: rgba(106, 137, 204, 0.2);
+            align-self: flex-start;
+            border-bottom-left-radius: 0;
+        }
+
+        .user-message {
+            background: rgba(37, 117, 252, 0.2);
+            align-self: flex-end;
+            border-bottom-right-radius: 0;
+        }
+
+        .chat-input {
+            display: flex;
+            gap: 10px;
+        }
+
+        .chat-input input {
+            flex: 1;
+            padding: 12px;
+            border-radius: 8px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            background: rgba(0, 0, 0, 0.2);
+            color: white;
+        }
+
+        .chat-input button {
+            background: linear-gradient(45deg, #6a11cb, #2575fc);
+            color: white;
+            border: none;
+            padding: 12px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+        }
+
+        .horoscope-section {
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(10px);
+            border-radius: 15px;
+            padding: 25px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            margin-top: 20px;
+        }
+
+        .horoscope-section h2 {
+            text-align: center;
+            margin-bottom: 20px;
+            color: #6a89cc;
+        }
+
+        .horoscope-content {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        .horoscope-card {
+            background: rgba(0, 0, 0, 0.2);
+            padding: 15px;
+            border-radius: 10px;
+        }
+
+        .horoscope-card h3 {
+            color: #6a89cc;
+            margin-bottom: 10px;
+        }
+
+        .palm-modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            backdrop-filter: blur(5px);
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .modal-content {
+            background: #1a1a2e;
+            padding: 30px;
+            border-radius: 15px;
+            width: 90%;
+            max-width: 500px;
+            box-shadow: 0 0 30px rgba(106, 137, 204, 0.5);
+            text-align: center;
+        }
+
+        .modal-content h2 {
+            color: #6a89cc;
+            margin-bottom: 20px;
+        }
+
+        .camera-container {
+            width: 100%;
+            margin-bottom: 20px;
+            position: relative;
+        }
+
+        #camera-preview {
+            width: 100%;
+            border-radius: 10px;
+            display: none;
+        }
+
+        .upload-area {
+            border: 2px dashed #6a89cc;
+            padding: 30px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            cursor: pointer;
+        }
+
+        .upload-area i {
+            font-size: 3rem;
+            color: #6a89cc;
+            margin-bottom: 10px;
+        }
+
+        .modal-buttons {
+            display: flex;
+            justify-content: space-between;
+            gap: 10px;
+        }
+
+        .modal-buttons button {
+            flex: 1;
+            padding: 12px;
+            border-radius: 8px;
+            border: none;
+            cursor: pointer;
+            font-weight: 500;
+        }
+
+        .cancel-btn {
+            background: rgba(255, 255, 255, 0.1);
+            color: white;
+        }
+
+        .analyze-btn {
+            background: linear-gradient(45deg, #6a11cb, #2575fc);
+            color: white;
+        }
+
+        .capture-btn {
+            background: linear-gradient(45deg, #6a11cb, #2575fc);
+            color: white;
+            margin-top: 10px;
+            padding: 10px;
+            border-radius: 8px;
+            border: none;
+            cursor: pointer;
+            display: none;
+        }
+
+        .zodiac-traits {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-top: 10px;
+        }
+
+        .trait {
+            background: rgba(106, 137, 204, 0.2);
+            padding: 5px 10px;
+            border-radius: 20px;
+            font-size: 0.9rem;
+        }
+
+        .signature {
+            margin-top: 30px;
+            text-align: center;
+            color: #a1a8c9;
+            font-size: 0.9rem;
+        }
+
+        .typing-indicator {
+            display: none;
+            padding: 12px 15px;
+            background: rgba(106, 137, 204, 0.2);
+            border-radius: 10px;
+            align-self: flex-start;
+            border-bottom-left-radius: 0;
+            margin-bottom: 15px;
+        }
+
+        .typing-indicator span {
+            height: 8px;
+            width: 8px;
+            float: left;
+            margin: 0 1px;
+            background-color: #6a89cc;
+            display: block;
+            border-radius: 50%;
+            opacity: 0.4;
+        }
+
+        .typing-indicator span:nth-of-type(1) {
+            animation: typing 1s infinite;
+        }
+
+        .typing-indicator span:nth-of-type(2) {
+            animation: typing 1s 0.33s infinite;
+        }
+
+        .typing-indicator span:nth-of-type(3) {
+            animation: typing 1s 0.66s infinite;
+        }
+
+        @keyframes typing {
+            0%, 100% {
+                opacity: 0.4;
+            }
+            50% {
+                opacity: 1;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>Cosmic Guide</h1>
+        <p>Your personal AI astrologer for insights into your future</p>
+    </div>
+
+    <div class="container">
+        <div class="popup-options">
+            <h2>What would you like to know about your future?</h2>
+            <div class="options-grid">
+                <div class="option-card" data-option="relationship">
+                    <i class="fas fa-heart"></i>
+                    <h3>Know about your Relationship</h3>
+                </div>
+                <div class="option-card" data-option="career">
+                    <i class="fas fa-briefcase"></i>
+                    <h3>Know about your Career</h3>
+                </div>
+                <div class="option-card" data-option="health">
+                    <i class="fas fa-heartbeat"></i>
+                    <h3>Know about your Health</h3>
+                </div>
+                <div class="option-card" data-option="wealth">
+                    <i class="fas fa-gem"></i>
+                    <h3>Know about your Wealth</h3>
+                </div>
+                <div class="option-card" data-option="lucky">
+                    <i class="fas fa-dice"></i>
+                    <h3>Know about your Lucky Number & Color</h3>
+                </div>
+            </div>
+        </div>
+
+        <div class="chat-container">
+            <div class="user-info">
+                <h2>Your Information</h2>
+                <div class="form-group">
+                    <label for="user-name">Your Name</label>
+                    <input type="text" id="user-name" placeholder="Enter your name">
+                </div>
+                <div class="form-group">
+                    <label for="user-dob">Date of Birth</label>
+                    <input type="date" id="user-dob">
+                </div>
+                <div class="zodiac-info">
+                    <h3>Your Zodiac: <span id="zodiac-sign">-</span></h3>
+                    <div class="zodiac-traits" id="zodiac-traits">
+                        <!-- Traits will be added by JavaScript -->
+                    </div>
+                </div>
+            </div>
+
+            <div class="chat-interface">
+                <div class="chat-header">
+                    <h2>Cosmic Guide Chat</h2>
+                    <button class="palm-reading-btn" id="palm-reading-btn">
+                        <i class="fas fa-hand"></i> Palm Reading
+                    </button>
+                </div>
+                <div class="chat-messages" id="chat-messages">
+                    <div class="message bot-message">
+                        Hello! I'm your Cosmic Guide. Please select an option above and provide your details to get started.
+                    </div>
+                </div>
+                <div class="typing-indicator" id="typing-indicator">
+                    <span></span>
+                    <span></span>
+                    <span></span>
+                </div>
+                <div class="chat-input">
+                    <input type="text" id="user-input" placeholder="Ask me anything about astrology...">
+                    <button id="send-btn">Send</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="horoscope-section">
+            <h2>Today's Horoscope</h2>
+            <div class="horoscope-content">
+                <div class="horoscope-card">
+                    <h3>Daily Reading</h3>
+                    <p id="daily-horoscope">Please enter your date of birth to see your daily horoscope.</p>
+                </div>
+                <div class="horoscope-card">
+                    <h3>Lucky Numbers & Colors</h3>
+                    <p id="lucky-info">Your lucky numbers and colors will appear here.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="palm-modal" id="palm-modal">
+        <div class="modal-content">
+            <h2>Palm Reading</h2>
+            <div class="camera-container">
+                <video id="camera-preview" autoplay playsinline></video>
+                <div class="upload-area" id="upload-area">
+                    <i class="fas fa-camera"></i>
+                    <p>Click to access your camera for palm reading</p>
+                </div>
+                <button class="capture-btn" id="capture-btn">Capture Palm</button>
+            </div>
+            <div class="modal-buttons">
+                <button class="cancel-btn" id="cancel-palm">Cancel</button>
+                <button class="analyze-btn" id="analyze-palm">Analyze Palm</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="signature">
+        <p>Created with <i class="fas fa-heart" style="color: #e74c3c;"></i> by Cosmic Guide &copy; 2023</p>
+    </div>
+
+    <script>
+        // API Key for Gemini
+        const GEMINI_API_KEY = "AIzaSyDkZaJ3uzIpQPzYd_kG4avP8eMlY6b1WEI";
+        const GEMINI_API_URL = `https://generativelanguage.googleapis.com/v1/models/gemini-pro:generateContent?key=${GEMINI_API_KEY}`;
+
+        // Zodiac sign data
+        const zodiacSigns = [
+            { name: "Aries", start: [3, 21], end: [4, 19], traits: ["Energetic", "Courageous", "Passionate"] },
+            { name: "Taurus", start: [4, 20], end: [5, 20], traits: ["Reliable", "Patient", "Practical"] },
+            { name: "Gemini", start: [5, 21], end: [6, 20], traits: ["Adaptable", "Communicative", "Witty"] },
+            { name: "Cancer", start: [6, 21], end: [7, 22], traits: ["Compassionate", "Intuitive", "Protective"] },
+            { name: "Leo", start: [7, 23], end: [8, 22], traits: ["Confident", "Generous", "Leader"] },
+            { name: "Virgo", start: [8, 23], end: [9, 22], traits: ["Analytical", "Practical", "Precise"] },
+            { name: "Libra", start: [9, 23], end: [10, 22], traits: ["Diplomatic", "Social", "Fair-minded"] },
+            { name: "Scorpio", start: [10, 23], end: [11, 21], traits: ["Passionate", "Resourceful", "Determined"] },
+            { name: "Sagittarius", start: [11, 22], end: [12, 21], traits: ["Optimistic", "Adventurous", "Straightforward"] },
+            { name: "Capricorn", start: [12, 22], end: [1, 19], traits: ["Responsible", "Disciplined", "Self-control"] },
+            { name: "Aquarius", start: [1, 20], end: [2, 18], traits: ["Innovative", "Humanitarian", "Independent"] },
+            { name: "Pisces", start: [2, 19], end: [3, 20], traits: ["Compassionate", "Artistic", "Intuitive"] }
+        ];
+
+        // Horoscope data
+        const horoscopes = {
+            Aries: "Today is a day for new beginnings. Your energy is high, and you should channel it into starting projects you've been putting off. Be cautious of impulsiveness in decision making.",
+            Taurus: "Focus on stability today. Financial matters may require your attention. Your practical nature will help you solve problems that others find difficult.",
+            Gemini: "Communication is highlighted today. You may find yourself in conversations that lead to new opportunities. Stay open to new ideas and perspectives.",
+            Cancer: "Your emotional intelligence is high today. Trust your instincts when dealing with others. Family matters may require your attention.",
+            Leo: "Your natural leadership abilities shine today. Others look to you for guidance. Don't shy away from the spotlight when it comes to showcasing your talents.",
+            Virgo: "Attention to detail will serve you well today. Organize your tasks and tackle them methodically. Health matters may benefit from your careful approach.",
+            Libra: "Relationships are highlighted today. Strive for balance in your interactions. Your diplomatic skills will help resolve any conflicts that arise.",
+            Scorpio: "Your intensity serves you well today. Dive deep into problems that require solving. Your transformative energy can help make important changes.",
+            Sagittarius: "Adventure calls today. Be open to new experiences and learning opportunities. Your optimism will attract positive people and situations.",
+            Capricorn: "Focus on your goals today. Your disciplined approach will help you make progress on long-term projects. Career matters may require your attention.",
+            Aquarius: "Innovation is your theme today. Think outside the box and don't be afraid to suggest unconventional solutions. Your unique perspective is valuable.",
+            Pisces: "Your creativity is heightened today. Express yourself through art, music, or writing. Compassionate actions will bring you fulfillment."
+        };
+
+        // Lucky numbers and colors
+        const luckyNumbers = {
+            Aries: [7, 14, 21, 28],
+            Taurus: [2, 6, 9, 12],
+            Gemini: [3, 5, 12, 18],
+            Cancer: [4, 13, 22, 31],
+            Leo: [1, 8, 17, 19],
+            Virgo: [5, 14, 23, 27],
+            Libra: [6, 15, 24, 33],
+            Scorpio: [8, 11, 18, 22],
+            Sagittarius: [3, 9, 12, 21],
+            Capricorn: [4, 10, 19, 28],
+            Aquarius: [7, 11, 22, 29],
+            Pisces: [5, 7, 14, 20]
+        };
+
+        const luckyColors = {
+            Aries: "Red",
+            Taurus: "Green",
+            Gemini: "Yellow",
+            Cancer: "Silver",
+            Leo: "Gold",
+            Virgo: "Brown",
+            Libra: "Pink",
+            Scorpio: "Black",
+            Sagittarius: "Purple",
+            Capricorn: "Gray",
+            Aquarius: "Blue",
+            Pisces: "Sea Green"
+        };
+
+        // DOM Elements
+        const userNameInput = document.getElementById('user-name');
+        const userDobInput = document.getElementById('user-dob');
+        const zodiacSignElement = document.getElementById('zodiac-sign');
+        const zodiacTraitsElement = document.getElementById('zodiac-traits');
+        const dailyHoroscopeElement = document.getElementById('daily-horoscope');
+        const luckyInfoElement = document.getElementById('lucky-info');
+        const chatMessagesElement = document.getElementById('chat-messages');
+        const userInputElement = document.getElementById('user-input');
+        const sendButton = document.getElementById('send-btn');
+        const palmReadingBtn = document.getElementById('palm-reading-btn');
+        const palmModal = document.getElementById('palm-modal');
+        const cancelPalmBtn = document.getElementById('cancel-palm');
+        const analyzePalmBtn = document.getElementById('analyze-palm');
+        const optionCards = document.querySelectorAll('.option-card');
+        const uploadArea = document.getElementById('upload-area');
+        const cameraPreview = document.getElementById('camera-preview');
+        const captureBtn = document.getElementById('capture-btn');
+        const typingIndicator = document.getElementById('typing-indicator');
+
+        // Variables
+        let stream = null;
+        let currentZodiacSign = "";
+
+        // Event Listeners
+        userDobInput.addEventListener('change', updateZodiacInfo);
+        sendButton.addEventListener('click', sendMessage);
+        userInputElement.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') sendMessage();
+        });
+        palmReadingBtn.addEventListener('click', openPalmModal);
+        cancelPalmBtn.addEventListener('click', closePalmModal);
+        analyzePalmBtn.addEventListener('click', analyzePalm);
+        optionCards.forEach(card => {
+            card.addEventListener('click', () => {
+                const option = card.getAttribute('data-option');
+                handleOptionSelect(option);
+            });
+        });
+        uploadArea.addEventListener('click', startCamera);
+        captureBtn.addEventListener('click', capturePalm);
+
+        // Functions
+        function updateZodiacInfo() {
+            const dob = new Date(userDobInput.value);
+            if (isNaN(dob.getTime())) return;
+            
+            currentZodiacSign = getZodiacSign(dob);
+            zodiacSignElement.textContent = currentZodiacSign;
+            
+            // Update traits
+            zodiacTraitsElement.innerHTML = '';
+            const traits = zodiacSigns.find(sign => sign.name === currentZodiacSign).traits;
+            traits.forEach(trait => {
+                const traitElement = document.createElement('span');
+                traitElement.classList.add('trait');
+                traitElement.textContent = trait;
+                zodiacTraitsElement.appendChild(traitElement);
+            });
+            
+            // Update horoscope
+            dailyHoroscopeElement.textContent = horoscopes[currentZodiacSign];
+            
+            // Update lucky info
+            const numbers = luckyNumbers[currentZodiacSign].join(', ');
+            const color = luckyColors[currentZodiacSign];
+            luckyInfoElement.innerHTML = `<strong>Lucky Numbers:</strong> ${numbers}<br><strong>Lucky Color:</strong> ${color}`;
+            
+            // Add welcome message if it's the first time
+            if (!userNameInput.value) return;
+            addBotMessage(`Welcome ${userNameInput.value}! I see you're a ${currentZodiacSign}. How can I help you with your astrological journey?`);
+        }
+
+        function getZodiacSign(dob) {
+            const month = dob.getMonth() + 1;
+            const day = dob.getDate();
+            
+            for (const sign of zodiacSigns) {
+                const [startMonth, startDay] = sign.start;
+                const [endMonth, endDay] = sign.end;
+                
+                if ((month === startMonth && day >= startDay) || (month === endMonth && day <= endDay)) {
+                    return sign.name;
+                }
+            }
+            
+            return "Capricorn"; // Default for edge cases
+        }
+
+        function handleOptionSelect(option) {
+            if (!userNameInput.value || !userDobInput.value) {
+                addBotMessage("Please provide your name and date of birth first.");
+                return;
+            }
+            
+            let message = "";
+            
+            switch(option) {
+                case "relationship":
+                    message = `Based on your ${currentZodiacSign} sign, your relationships are characterized by passion and depth. You seek a partner who can match your intensity and loyalty.`;
+                    break;
+                case "career":
+                    message = `As a ${currentZodiacSign}, you thrive in careers that allow you to express your natural talents. Leadership roles and creative pursuits are especially favorable for you.`;
+                    break;
+                case "health":
+                    message = `Your ${currentZodiacSign} sign suggests you should pay attention to stress management. Regular exercise and a balanced diet will help maintain your vitality.`;
+                    break;
+                case "wealth":
+                    message = `Financial opportunities may come through networking. As a ${currentZodiacSign}, you have a natural ability to attract abundance when you follow your intuition.`;
+                    break;
+                case "lucky":
+                    const numbers = luckyNumbers[currentZodiacSign].join(', ');
+                    const color = luckyColors[currentZodiacSign];
+                    message = `Your lucky numbers are ${numbers} and your lucky color is ${color}. Incorporate these into your daily life to attract positive energy.`;
+                    break;
+            }
+            
+            addBotMessage(message);
+        }
+
+        async function sendMessage() {
+            const message = userInputElement.value.trim();
+            if (!message) return;
+            
+            addUserMessage(message);
+            userInputElement.value = '';
+            
+            // Show typing indicator
+            typingIndicator.style.display = 'block';
+            
+            try {
+                // Prepare the prompt for Gemini API
+                const prompt = `You are an expert astrologer. The user is a ${currentZodiacSign}. 
+                Respond to this astrology-related question: "${message}". 
+                Keep your response concise (2-3 sentences) and focused on astrological insights.`;
+                
+                // Call Gemini API
+                const response = await fetch(GEMINI_API_URL, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        contents: [{
+                            parts: [{
+                                text: prompt
+                            }]
+                        }]
+                    })
+                });
+                
+                const data = await response.json();
+                const botResponse = data.candidates[0].content.parts[0].text;
+                
+                // Hide typing indicator and show response
+                typingIndicator.style.display = 'none';
+                addBotMessage(botResponse);
+            } catch (error) {
+                console.error('Error calling Gemini API:', error);
+                typingIndicator.style.display = 'none';
+                
+                // Fallback response if API fails
+                let fallbackResponse = "I'm here to provide astrological guidance. Based on your zodiac sign, ";
+                
+                if (message.toLowerCase().includes('love') || message.toLowerCase().includes('relationship')) {
+                    fallbackResponse += `your love life as a ${currentZodiacSign} shows great potential for deep connections.`;
+                } else if (message.toLowerCase().includes('career') || message.toLowerCase().includes('job')) {
+                    fallbackResponse += `your career path as a ${currentZodiacSign} is aligned with creative and leadership roles.`;
+                } else if (message.toLowerCase().includes('health')) {
+                    fallbackResponse += `your health as a ${currentZodiacSign} requires attention to balance and stress management.`;
+                } else if (message.toLowerCase().includes('wealth') || message.toLowerCase().includes('money')) {
+                    fallbackResponse += `your financial outlook as a ${currentZodiacSign} is promising, especially when you follow your intuition.`;
+                } else {
+                    fallbackResponse += "the stars indicate a period of growth and transformation. Trust your journey.";
+                }
+                
+                addBotMessage(fallbackResponse);
+            }
+        }
+
+        function addUserMessage(message) {
+            const messageElement = document.createElement('div');
+            messageElement.classList.add('message', 'user-message');
+            messageElement.textContent = message;
+            chatMessagesElement.appendChild(messageElement);
+            chatMessagesElement.scrollTop = chatMessagesElement.scrollHeight;
+        }
+
+        function addBotMessage(message) {
+            const messageElement = document.createElement('div');
+            messageElement.classList.add('message', 'bot-message');
+            messageElement.textContent = message;
+            chatMessagesElement.appendChild(messageElement);
+            chatMessagesElement.scrollTop = chatMessagesElement.scrollHeight;
+        }
+
+        function openPalmModal() {
+            palmModal.style.display = 'flex';
+        }
+
+        function closePalmModal() {
+            palmModal.style.display = 'none';
+            stopCamera();
+        }
+
+        async function startCamera() {
+            try {
+                stream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { facingMode: 'environment' } 
+                });
+                cameraPreview.srcObject = stream;
+                cameraPreview.style.display = 'block';
+                uploadArea.style.display = 'none';
+                captureBtn.style.display = 'block';
+            } catch (error) {
+                console.error('Error accessing camera:', error);
+                addBotMessage("Could not access your camera. Please ensure you've granted camera permissions.");
+            }
+        }
+
+        function stopCamera() {
+            if (stream) {
+                stream.getTracks().forEach(track => track.stop());
+                stream = null;
+            }
+            cameraPreview.style.display = 'none';
+            uploadArea.style.display = 'block';
+            captureBtn.style.display = 'none';
+        }
+
+        function capturePalm() {
+            // In a real app, you would capture the image and process it
+            // For this demo, we'll simulate the capture process
+            addBotMessage("Palm image captured! Analyzing your palm lines...");
+            
+            // Simulate analysis delay
+            setTimeout(() => {
+                const palmResults = `Based on your palm reading, I see that you have a ${currentZodiacSign} dominant hand. 
+                Your heart line shows depth of emotion, and your life line indicates vitality and resilience. 
+                The stars align with your palm's energy today!`;
+                
+                addBotMessage(palmResults);
+                closePalmModal();
+            }, 3000);
+        }
+
+        function analyzePalm() {
+            // This would be where you send the image to an API for analysis
+            // For this demo, we'll use a simulated response
+            addBotMessage("Analyzing your palm for astrological insights...");
+            
+            // Simulate API call delay
+            setTimeout(() => {
+                const analysis = `Palm analysis complete! Your hand shows strong ${currentZodiacSign} characteristics. 
+                The mount of Jupiter is prominent, indicating leadership qualities. 
+                Your fate line suggests interesting changes ahead in the next lunar cycle.`;
+                
+                addBotMessage(analysis);
+                closePalmModal();
+            }, 2000);
+        }
+
+        // Initialize with today's date
+        userDobInput.valueAsDate = new Date();
+        updateZodiacInfo();
+    </script>
+</body>
+</html>
