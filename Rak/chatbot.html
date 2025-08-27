@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>AstroDragon — Camera Auto-Capture Zodiac</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0
+        }
+        
+        body {
+            font-family: "Segoe UI", Roboto, Arial, sans-serif;
+            background: linear-gradient(135deg, #0b1020 0%, #2b0630 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        
+        .app {
+            width: 100%;
+            max-width: 880px;
+            background: #fff;
+            border-radius: 16px;
+            overflow: hidden;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, .45);
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .header {
+            padding: 18px 22px;
+            background: linear-gradient(90deg, #ff7a00, #ffd54a);
+            color: #111;
+            font-weight: 700;
+            font-size: 20px
+        }
+        
+        .main {
+            display: flex;
+            gap: 18px;
+            padding: 18px;
+            background: #0f0f12;
+            color: #fff
+        }
+        
+        .left {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 10px
+        }
+        
+        video,
+        canvas {
+            width: 100%;
+            border-radius: 10px;
+            background: #000;
+            display: block
+        }
+        
+        .controls {
+            display: flex;
+            gap: 8px;
+            margin-top: 8px
+        }
+        
+        button {
+            padding: 10px 14px;
+            border-radius: 10px;
+            border: 0;
+            cursor: pointer;
+            font-weight: 600
+        }
+        
+        .btn-start {
+            background: linear-gradient(90deg, #00c853, #64dd17);
+            color: #012
+        }
+        
+        .btn-stop {
+            background: linear-gradient(90deg, #f44336, #ff7043);
+            color: #fff
+        }
+        
+        .btn-detect {
+            background: linear-gradient(90deg, #2962ff, #448aff);
+            color: #fff
+        }
+        
+        .right {
+            width: 360px;
+            max-width: 40%;
+            display: flex;
+            flex-direction: column;
+            gap: 10px
+        }
+        
+        .messages {
+            background: linear-gradient(180deg, #121212, #161616);
+            padding: 12px;
+            border-radius: 10px;
+            min-height: 140px;
+            overflow: auto
+        }
+        
+        .msg {
+            padding: 10px;
+            border-radius: 8px;
+            margin-bottom: 8px
+        }
+        
+        .msg.bot {
+            background: #fde047;
+            color: #111
+        }
+        
+        .msg.user {
+            background: linear-gradient(90deg, #4facfe, #00f2fe);
+            color: #fff;
+            text-align: right
+        }
+        
+        .capture-preview {
+            background: #0d0d0d;
+            padding: 8px;
+            border-radius: 10px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            align-items: center
+        }
+        
+        .small {
+            font-size: 13px;
+            color: #ddd
+        }
+        
+        .status {
+            padding: 8px 12px;
+            border-radius: 8px;
+            background: rgba(255, 255, 255, .06);
+            font-weight: 600
+        }
+        
+        .footer {
+            padding: 12px 18px;
+            background: #f6f6f6;
+            color: #111;
+            text-align: center;
+            font-size: 13px
+        }
+        
+        @media(max-width:880px) {
+            .main {
+                flex-direction: column
+            }
+            .right {
+                max-width: 100%;
+                width: 100%
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="app">
+        <div class="header">🐉 AstroDragon — Camera Auto-Capture (Fake Sign Detector)</div>
+
+        <div class="main">
+            <div class="left">
+                <video id="video" autoplay playsinline></video>
+                <canvas id="canvas" style="display:none;"></canvas>
+
+                <div class="controls">
+                    <button id="startBtn" class="btn-start">📸 Start Camera (Auto-capture)</button>
+                    <button id="detectBtn" class="btn-detect" disabled>🔮 Detect Again</button>
+                    <button id="stopBtn" class="btn-stop" disabled>⛔ Stop Camera</button>
+                </div>
+
+                <div class="capture-preview" id="previewBox" style="display:none">
+                    <div class="small">Captured frame (preview):</div>
+                    <img id="previewImg" alt="Captured frame" style="max-width:100%;border-radius:8px" />
+                    <div class="small" id="previewNote">Auto-captured after camera started.</div>
+                </div>
+            </div>
+
+            <div class="right">
+                <div class="messages" id="messages">
+                    <div class="msg bot">Hello! Start camera to auto-capture your face — I'll (playfully) tell you a zodiac sign.</div>
+                </div>
+                <div class="status" id="status">Status: Idle</div>
+            </div>
+        </div>
+
+        <div class="footer">Note: This is a playful/random zodiac detector. It does <strong>not</strong> actually read astrological signs from your face.</div>
+    </div>
+
+    <script>
+        const startBtn = document.getElementById('startBtn');
+        const detectBtn = document.getElementById('detectBtn');
+        const stopBtn = document.getElementById('stopBtn');
+        const video = document.getElementById('video');
+        const canvas = document.getElementById('canvas');
+        const previewBox = document.getElementById('previewBox');
+        const previewImg = document.getElementById('previewImg');
+        const messages = document.getElementById('messages');
+        const status = document.getElementById('status');
+
+        const zodiacSigns = ["Aries", "Taurus", "Gemini", "Cancer", "Leo", "Virgo", "Libra", "Scorpio", "Sagittarius", "Capricorn", "Aquarius", "Pisces"];
+
+        // Horoscope predictions
+        const rashifal = {
+            Aries: "Today brings a surge of energy and motivation for you. It is a perfect time to start something new or push forward with a project that has been on your mind. Your leadership qualities will shine, but remember to balance ambition with patience.",
+            Taurus: "Stability and patience will be your strength today. Financial matters may bring positive news, and you may feel more grounded in your personal relationships. Focus on consistency rather than speed.",
+            Gemini: "Your mind will be sharp and curious today. This is an excellent day for communication, learning, and networking. Be open to new ideas and conversations as they could bring opportunities you were not expecting.",
+            Cancer: "Family and emotional connections will play an important role today. You may feel more sensitive, but this sensitivity can also deepen your bonds with loved ones.",
+            Leo: "Your confidence will naturally attract attention today. Whether in your career or personal life, people will admire your presence and creativity.",
+            Virgo: "Your analytical skills will be strong today, making this the right time to organize, plan, or complete tasks that need precision. Health and wellness should be a priority.",
+            Libra: "Balance and harmony are the key themes for you today. You may find yourself mediating between people or bringing calm to a tense situation.",
+            Scorpio: "Intensity defines your day. You may uncover hidden truths or gain deeper insights into situations. Your determination will help you overcome challenges.",
+            Sagittarius: "Adventure and curiosity guide you today. You may feel drawn toward exploring new ideas, travel, or learning. This is a favorable time for taking risks.",
+            Capricorn: "Your focus on career and long-term goals will be strong today. Discipline and determination will help you make progress in areas that matter most.",
+            Aquarius: "Innovation and originality will be your strengths today. You might come up with creative solutions to long-standing problems.",
+            Pisces: "Your imagination and empathy are heightened today. This makes it an ideal time for artistic pursuits or acts of kindness."
+        };
+
+        // Best qualities
+        const bestQualities = {
+            Aries: "Energetic, Brave, Leader",
+            Taurus: "Reliable, Patient, Practical",
+            Gemini: "Smart, Curious, Adaptable",
+            Cancer: "Caring, Loyal, Protective",
+            Leo: "Confident, Generous, Creative",
+            Virgo: "Analytical, Kind, Hardworking",
+            Libra: "Charming, Fair, Social",
+            Scorpio: "Passionate, Determined, Loyal",
+            Sagittarius: "Optimistic, Adventurous, Honest",
+            Capricorn: "Disciplined, Responsible, Ambitious",
+            Aquarius: "Innovative, Independent, Friendly",
+            Pisces: "Compassionate, Artistic, Gentle"
+        };
+
+        let stream = null;
+
+        function appendMessage(text, who = 'bot') {
+            const div = document.createElement('div');
+            div.className = 'msg ' + (who === 'bot' ? 'bot' : 'user');
+            div.innerHTML = text;
+            messages.appendChild(div);
+            messages.scrollTop = messages.scrollHeight;
+        }
+
+        function chooseRandomSign() {
+            return zodiacSigns[Math.floor(Math.random() * zodiacSigns.length)];
+        }
+
+        function captureFrame() {
+            const w = video.videoWidth,
+                h = video.videoHeight;
+            if (w === 0 || h === 0) return null;
+            canvas.width = w;
+            canvas.height = h;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(video, 0, 0, w, h);
+            return canvas.toDataURL('image/png');
+        }
+
+        function performDetection(auto = false) {
+            const dataUrl = captureFrame();
+            if (!dataUrl) {
+                appendMessage("⚠️ Unable to capture frame.", 'bot');
+                return;
+            }
+            previewImg.src = dataUrl;
+            previewBox.style.display = 'flex';
+
+            const sign = chooseRandomSign();
+            const msg = `🌌 Your detected sign is <strong>${sign}</strong>.<br><br>
+                 🔮 Horoscope: ${rashifal[sign]}<br><br>
+                 ✨ Best Qualities: ${bestQualities[sign]}`;
+
+            appendMessage(auto ? '📸 Auto-captured your frame.' : '📸 Captured frame.', 'user');
+            appendMessage(msg, 'bot');
+            status.textContent = `Status: Detected ${sign}`;
+            detectBtn.disabled = false;
+        }
+
+        async function startCamera() {
+            if (stream) return;
+            try {
+                status.textContent = 'Status: Requesting camera permission...';
+                stream = await navigator.mediaDevices.getUserMedia({
+                    video: {
+                        facingMode: 'user'
+                    },
+                    audio: false
+                });
+                video.srcObject = stream;
+                stopBtn.disabled = false;
+                startBtn.disabled = true;
+                const onPlay = () => {
+                    setTimeout(() => performDetection(true), 1000);
+                    video.removeEventListener('playing', onPlay);
+                };
+                video.addEventListener('playing', onPlay);
+                status.textContent = 'Status: Camera running. Auto-capture scheduled.';
+            } catch (err) {
+                appendMessage('⚠️ Camera error: ' + err.message, 'bot');
+                status.textContent = 'Status: Camera error';
+                stream = null;
+                startBtn.disabled = false;
+                stopBtn.disabled = true;
+            }
+        }
+
+        function stopCamera() {
+            if (!stream) return;
+            stream.getTracks().forEach(t => t.stop());
+            stream = null;
+            video.srcObject = null;
+            previewBox.style.display = 'none';
+            status.textContent = 'Status: Camera stopped';
+            startBtn.disabled = false;
+            detectBtn.disabled = true;
+            stopBtn.disabled = true;
+            appendMessage('⛔ Camera stopped.', 'bot');
+        }
+
+        startBtn.addEventListener('click', () => startCamera());
+        detectBtn.addEventListener('click', () => {
+            if (stream) performDetection(false);
+            else appendMessage('⚠️ Camera not running.', 'bot');
+        });
+        stopBtn.addEventListener('click', () => stopCamera());
+        window.addEventListener('beforeunload', stopCamera);
+        setInterval(() => {
+            detectBtn.disabled = !stream;
+            stopBtn.disabled = !stream;
+        }, 500);
+    </script>
+</body>
+
+</html>
