@@ -8,6 +8,7 @@
 
 **Palm Pay** is a **secure, AI-driven, touchless payment and identity verification system** that works using **any standard camera** (webcam, smartphone, kiosk camera) without the need for expensive biometric scanners.  
 
+
 It combines **multi-modal authentication** (Palm recognition + Face ID + Gesture PIN + Voice command) to complete payments or identity verification in **under 7 seconds**, making it one of the fastest and most user-friendly digital payment solutions.  
 
 Unlike traditional systems, Palm Pay also doubles as a **Universal Digital ID Platform** — storing Aadhaar, PAN, Driving License, Metro cards, and other IDs in a **secure cardless format**, accessible through just your palm.  
