@@ -1,5 +1,7 @@
 # 🌐 Palm Pay — AI-Powered Touchless Payment & Identity System
 
+---
+
 ## 🚀 Overview
 
 **Palm Pay** is a **secure, AI-driven, touchless payment and identity verification system** that works using **any standard camera** (webcam, smartphone, kiosk camera) without the need for expensive biometric scanners.  
