@@ -1,0 +1,605 @@
+import tkinter as tk
+from tkinter import ttk, messagebox, simpledialog
+import cv2
+import numpy as np
+import sqlite3
+import mediapipe as mp
+from PIL import Image, ImageTk
+import threading
+import time
+import pickle
+from sklearn.metrics.pairwise import cosine_similarity
+from datetime import datetime
+import os
+
+class PalmBiometricSystem:
+    def __init__(self):
+        # Initialize main window
+        self.root = tk.Tk()
+        self.root.title("Palm Biometric System")
+        self.root.geometry("800x600")
+        self.root.configure(bg='#2c3e50')
+        
+        # Initialize MediaPipe
+        self.mp_hands = mp.solutions.hands
+        self.hands = self.mp_hands.Hands(
+            static_image_mode=False,
+            max_num_hands=1,
+            min_detection_confidence=0.7,
+            min_tracking_confidence=0.5
+        )
+        self.mp_drawing = mp.solutions.drawing_utils
+        
+        # Camera variables
+        self.cap = None
+        self.camera_active = False
+        self.current_mode = None  # 'register' or 'recognize'
+        
+        # Database initialization
+        self.init_database()
+        
+        # GUI setup
+        self.setup_gui()
+        
+        # Feature extraction variables
+        self.captured_features = None
+        self.palm_detected = False
+        
+    def init_database(self):
+        """Initialize SQLite database for storing user data"""
+        try:
+            self.conn = sqlite3.connect('palm_biometric.db')
+            self.cursor = self.conn.cursor()
+            
+            # Create users table if it doesn't exist
+            self.cursor.execute('''
+                CREATE TABLE IF NOT EXISTS users (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    full_name TEXT NOT NULL,
+                    date_of_birth TEXT NOT NULL,
+                    aadhaar_number TEXT UNIQUE NOT NULL,
+                    pan_number TEXT UNIQUE NOT NULL,
+                    palm_features BLOB NOT NULL,
+                    registration_date TEXT NOT NULL
+                )
+            ''')
+            self.conn.commit()
+            print("Database initialized successfully")
+        except Exception as e:
+            messagebox.showerror("Database Error", f"Failed to initialize database: {str(e)}")
+    
+    def setup_gui(self):
+        """Setup the main GUI interface"""
+        # Title
+        title_label = tk.Label(
+            self.root, 
+            text="Palm Biometric Recognition System", 
+            font=("Arial", 20, "bold"),
+            bg='#2c3e50',
+            fg='white'
+        )
+        title_label.pack(pady=20)
+        
+        # Main frame
+        main_frame = tk.Frame(self.root, bg='#2c3e50')
+        main_frame.pack(expand=True, fill='both', padx=20, pady=10)
+        
+        # Left frame for camera
+        self.camera_frame = tk.Frame(main_frame, bg='#34495e', relief='raised', bd=2)
+        self.camera_frame.pack(side='left', fill='both', expand=True, padx=(0, 10))
+        
+        # Camera label
+        camera_title = tk.Label(
+            self.camera_frame, 
+            text="Camera Feed", 
+            font=("Arial", 14, "bold"),
+            bg='#34495e',
+            fg='white'
+        )
+        camera_title.pack(pady=10)
+        
+        # Video display label
+        self.video_label = tk.Label(self.camera_frame, bg='black')
+        self.video_label.pack(pady=10, padx=10, fill='both', expand=True)
+        
+        # Status label
+        self.status_label = tk.Label(
+            self.camera_frame,
+            text="Camera is OFF",
+            font=("Arial", 12),
+            bg='#34495e',
+            fg='yellow'
+        )
+        self.status_label.pack(pady=5)
+        
+        # Right frame for controls
+        control_frame = tk.Frame(main_frame, bg='#2c3e50')
+        control_frame.pack(side='right', fill='y', padx=(10, 0))
+        
+        # Control buttons
+        self.register_btn = tk.Button(
+            control_frame,
+            text="Register New User",
+            command=self.start_registration,
+            font=("Arial", 12, "bold"),
+            bg='#27ae60',
+            fg='white',
+            padx=20,
+            pady=10,
+            width=20
+        )
+        self.register_btn.pack(pady=10)
+        
+        self.recognize_btn = tk.Button(
+            control_frame,
+            text="Recognize User",
+            command=self.start_recognition,
+            font=("Arial", 12, "bold"),
+            bg='#3498db',
+            fg='white',
+            padx=20,
+            pady=10,
+            width=20
+        )
+        self.recognize_btn.pack(pady=10)
+        
+        self.stop_btn = tk.Button(
+            control_frame,
+            text="Stop Camera",
+            command=self.stop_camera,
+            font=("Arial", 12, "bold"),
+            bg='#e74c3c',
+            fg='white',
+            padx=20,
+            pady=10,
+            width=20
+        )
+        self.stop_btn.pack(pady=10)
+        
+        self.exit_btn = tk.Button(
+            control_frame,
+            text="Exit",
+            command=self.exit_application,
+            font=("Arial", 12, "bold"),
+            bg='#95a5a6',
+            fg='white',
+            padx=20,
+            pady=10,
+            width=20
+        )
+        self.exit_btn.pack(pady=10)
+        
+        # Info display area
+        info_frame = tk.LabelFrame(
+            control_frame,
+            text="User Information",
+            font=("Arial", 10, "bold"),
+            bg='#2c3e50',
+            fg='white'
+        )
+        info_frame.pack(pady=20, fill='both', expand=True)
+        
+        self.info_text = tk.Text(
+            info_frame,
+            height=15,
+            width=30,
+            font=("Arial", 9),
+            bg='#ecf0f1',
+            fg='#2c3e50',
+            wrap='word'
+        )
+        self.info_text.pack(pady=10, padx=10, fill='both', expand=True)
+        
+        # Instructions
+        instructions = """
+Instructions:
+1. Click 'Register New User' to register a new palm
+2. Show your LEFT PALM to the camera
+3. Keep palm steady until captured
+4. Fill in the registration form
+5. Click 'Recognize User' to identify registered users
+        """
+        self.info_text.insert('1.0', instructions)
+        self.info_text.config(state='disabled')
+    
+    def extract_palm_features(self, image):
+        """Extract palm features using MediaPipe landmarks"""
+        try:
+            # Convert BGR to RGB
+            rgb_image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+            results = self.hands.process(rgb_image)
+            
+            if results.multi_hand_landmarks:
+                hand_landmarks = results.multi_hand_landmarks[0]
+                
+                # Extract landmark coordinates
+                landmarks = []
+                for landmark in hand_landmarks.landmark:
+                    landmarks.extend([landmark.x, landmark.y, landmark.z])
+                
+                # Convert to numpy array and normalize
+                features = np.array(landmarks).flatten()
+                
+                # Additional features: distances between key points
+                h, w = image.shape[:2]
+                key_points = []
+                for landmark in hand_landmarks.landmark:
+                    key_points.append([int(landmark.x * w), int(landmark.y * h)])
+                
+                key_points = np.array(key_points)
+                
+                # Calculate distances between key landmarks
+                distances = []
+                for i in range(len(key_points)):
+                    for j in range(i+1, len(key_points)):
+                        dist = np.linalg.norm(key_points[i] - key_points[j])
+                        distances.append(dist)
+                
+                # Combine landmark features with distance features
+                distance_features = np.array(distances)
+                combined_features = np.concatenate([features, distance_features])
+                
+                return combined_features, True
+            
+            return None, False
+            
+        except Exception as e:
+            print(f"Feature extraction error: {e}")
+            return None, False
+    
+    def start_camera(self):
+        """Start camera capture"""
+        try:
+            self.cap = cv2.VideoCapture(0)
+            if not self.cap.isOpened():
+                messagebox.showerror("Camera Error", "Could not open camera")
+                return False
+            
+            self.camera_active = True
+            self.update_camera_feed()
+            return True
+            
+        except Exception as e:
+            messagebox.showerror("Camera Error", f"Failed to start camera: {str(e)}")
+            return False
+    
+    def stop_camera(self):
+        """Stop camera capture"""
+        self.camera_active = False
+        if self.cap:
+            self.cap.release()
+        
+        # Clear video display
+        self.video_label.configure(image='')
+        self.video_label.image = None
+        self.status_label.config(text="Camera is OFF", fg='yellow')
+        self.current_mode = None
+    
+    def update_camera_feed(self):
+        """Update camera feed in GUI"""
+        if not self.camera_active or not self.cap:
+            return
+        
+        try:
+            ret, frame = self.cap.read()
+            if ret:
+                # Flip frame horizontally for mirror effect
+                frame = cv2.flip(frame, 1)
+                
+                # Process frame for palm detection
+                rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                results = self.hands.process(rgb_frame)
+                
+                # Draw landmarks if palm detected
+                if results.multi_hand_landmarks:
+                    for hand_landmarks in results.multi_hand_landmarks:
+                        self.mp_drawing.draw_landmarks(
+                            frame, hand_landmarks, self.mp_hands.HAND_CONNECTIONS
+                        )
+                    
+                    self.palm_detected = True
+                    self.status_label.config(text="Palm Detected!", fg='green')
+                    
+                    # Auto-capture in registration mode
+                    if self.current_mode == 'register' and self.captured_features is None:
+                        features, success = self.extract_palm_features(frame)
+                        if success:
+                            self.captured_features = features
+                            self.status_label.config(text="Palm Captured! Fill the form.", fg='blue')
+                            self.show_registration_form()
+                    
+                    # Auto-recognize in recognition mode
+                    elif self.current_mode == 'recognize':
+                        features, success = self.extract_palm_features(frame)
+                        if success:
+                            self.recognize_palm(features)
+                
+                else:
+                    self.palm_detected = False
+                    if self.current_mode:
+                        self.status_label.config(text=f"Show your LEFT PALM ({self.current_mode} mode)", fg='orange')
+                
+                # Convert frame to PhotoImage and display
+                frame = cv2.resize(frame, (400, 300))
+                frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                img = Image.fromarray(frame_rgb)
+                imgtk = ImageTk.PhotoImage(image=img)
+                
+                self.video_label.configure(image=imgtk)
+                self.video_label.image = imgtk
+            
+            # Schedule next update
+            if self.camera_active:
+                self.root.after(10, self.update_camera_feed)
+                
+        except Exception as e:
+            print(f"Camera update error: {e}")
+    
+    def start_registration(self):
+        """Start palm registration process"""
+        self.current_mode = 'register'
+        self.captured_features = None
+        self.palm_detected = False
+        
+        if not self.start_camera():
+            return
+        
+        self.status_label.config(text="Show your LEFT PALM (Registration mode)", fg='orange')
+        self.info_text.config(state='normal')
+        self.info_text.delete('1.0', 'end')
+        self.info_text.insert('1.0', "Registration Mode:\n\nShow your LEFT PALM to the camera.\nKeep it steady until captured.\n\n")
+        self.info_text.config(state='disabled')
+    
+    def show_registration_form(self):
+        """Show registration form after palm capture"""
+        # Create registration window
+        reg_window = tk.Toplevel(self.root)
+        reg_window.title("User Registration")
+        reg_window.geometry("400x500")
+        reg_window.configure(bg='#ecf0f1')
+        reg_window.resizable(False, False)
+        
+        # Make window modal
+        reg_window.transient(self.root)
+        reg_window.grab_set()
+        
+        # Title
+        title = tk.Label(
+            reg_window,
+            text="Register New User",
+            font=("Arial", 16, "bold"),
+            bg='#ecf0f1',
+            fg='#2c3e50'
+        )
+        title.pack(pady=20)
+        
+        # Form frame
+        form_frame = tk.Frame(reg_window, bg='#ecf0f1')
+        form_frame.pack(pady=20, padx=40, fill='both', expand=True)
+        
+        # Form fields
+        fields = [
+            ("Full Name:", "full_name"),
+            ("Date of Birth (DD/MM/YYYY):", "dob"),
+            ("Aadhaar Number:", "aadhaar"),
+            ("PAN Number:", "pan")
+        ]
+        
+        self.form_entries = {}
+        
+        for i, (label_text, field_name) in enumerate(fields):
+            label = tk.Label(
+                form_frame,
+                text=label_text,
+                font=("Arial", 10, "bold"),
+                bg='#ecf0f1',
+                fg='#2c3e50'
+            )
+            label.grid(row=i, column=0, sticky='w', pady=10)
+            
+            entry = tk.Entry(
+                form_frame,
+                font=("Arial", 10),
+                width=25,
+                relief='solid',
+                bd=1
+            )
+            entry.grid(row=i, column=1, pady=10, padx=(10, 0))
+            self.form_entries[field_name] = entry
+        
+        # Buttons frame
+        btn_frame = tk.Frame(reg_window, bg='#ecf0f1')
+        btn_frame.pack(pady=20)
+        
+        save_btn = tk.Button(
+            btn_frame,
+            text="Save User",
+            command=lambda: self.save_user_data(reg_window),
+            font=("Arial", 12, "bold"),
+            bg='#27ae60',
+            fg='white',
+            padx=20,
+            pady=10
+        )
+        save_btn.pack(side='left', padx=10)
+        
+        cancel_btn = tk.Button(
+            btn_frame,
+            text="Cancel",
+            command=reg_window.destroy,
+            font=("Arial", 12, "bold"),
+            bg='#e74c3c',
+            fg='white',
+            padx=20,
+            pady=10
+        )
+        cancel_btn.pack(side='left', padx=10)
+    
+    def save_user_data(self, window):
+        """Save user data to database"""
+        try:
+            # Get form data
+            full_name = self.form_entries['full_name'].get().strip()
+            dob = self.form_entries['dob'].get().strip()
+            aadhaar = self.form_entries['aadhaar'].get().strip()
+            pan = self.form_entries['pan'].get().strip()
+            
+            # Validate input
+            if not all([full_name, dob, aadhaar, pan]):
+                messagebox.showerror("Validation Error", "All fields are required!")
+                return
+            
+            if len(aadhaar) != 12 or not aadhaar.isdigit():
+                messagebox.showerror("Validation Error", "Aadhaar number must be 12 digits!")
+                return
+            
+            if len(pan) != 10:
+                messagebox.showerror("Validation Error", "PAN number must be 10 characters!")
+                return
+            
+            # Serialize palm features
+            features_blob = pickle.dumps(self.captured_features)
+            
+            # Save to database
+            self.cursor.execute('''
+                INSERT INTO users (full_name, date_of_birth, aadhaar_number, pan_number, palm_features, registration_date)
+                VALUES (?, ?, ?, ?, ?, ?)
+            ''', (full_name, dob, aadhaar, pan, features_blob, datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
+            
+            self.conn.commit()
+            
+            messagebox.showinfo("Success", f"User '{full_name}' registered successfully!")
+            window.destroy()
+            self.stop_camera()
+            
+            # Update info display
+            self.info_text.config(state='normal')
+            self.info_text.delete('1.0', 'end')
+            self.info_text.insert('1.0', f"Registration Successful!\n\nUser: {full_name}\nRegistered on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+            self.info_text.config(state='disabled')
+            
+        except sqlite3.IntegrityError as e:
+            if 'aadhaar_number' in str(e):
+                messagebox.showerror("Database Error", "Aadhaar number already registered!")
+            elif 'pan_number' in str(e):
+                messagebox.showerror("Database Error", "PAN number already registered!")
+            else:
+                messagebox.showerror("Database Error", f"Registration failed: {str(e)}")
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to save user data: {str(e)}")
+    
+    def start_recognition(self):
+        """Start palm recognition process"""
+        self.current_mode = 'recognize'
+        self.palm_detected = False
+        
+        if not self.start_camera():
+            return
+        
+        self.status_label.config(text="Show your LEFT PALM (Recognition mode)", fg='orange')
+        self.info_text.config(state='normal')
+        self.info_text.delete('1.0', 'end')
+        self.info_text.insert('1.0', "Recognition Mode:\n\nShow your LEFT PALM to the camera.\nThe system will automatically identify you.\n\n")
+        self.info_text.config(state='disabled')
+    
+    def recognize_palm(self, features):
+        """Recognize palm and display user info"""
+        try:
+            # Get all users from database
+            self.cursor.execute('SELECT * FROM users')
+            users = self.cursor.fetchall()
+            
+            if not users:
+                self.display_recognition_result("No users registered in the system.")
+                return
+            
+            # Compare with stored features
+            best_match = None
+            best_similarity = 0
+            threshold = 0.85  # Similarity threshold
+            
+            for user in users:
+                stored_features = pickle.loads(user[5])  # palm_features column
+                
+                # Calculate cosine similarity
+                similarity = cosine_similarity([features], [stored_features])[0][0]
+                
+                if similarity > best_similarity and similarity > threshold:
+                    best_similarity = similarity
+                    best_match = user
+            
+            if best_match:
+                # Display user information
+                user_info = f"""
+Recognition Successful!
+Similarity: {best_similarity:.2%}
+
+User Details:
+Name: {best_match[1]}
+Date of Birth: {best_match[2]}
+Aadhaar Number: {best_match[3]}
+PAN Number: {best_match[4]}
+Registration Date: {best_match[6]}
+"""
+                self.display_recognition_result(user_info)
+                self.status_label.config(text=f"User Recognized: {best_match[1]}", fg='green')
+            else:
+                self.display_recognition_result("User not registered.\nPlease register first.")
+                self.status_label.config(text="User not found!", fg='red')
+        
+        except Exception as e:
+            messagebox.showerror("Recognition Error", f"Failed to recognize palm: {str(e)}")
+    
+    def display_recognition_result(self, result):
+        """Display recognition result in info panel"""
+        self.info_text.config(state='normal')
+        self.info_text.delete('1.0', 'end')
+        self.info_text.insert('1.0', result)
+        self.info_text.config(state='disabled')
+    
+    def exit_application(self):
+        """Exit the application"""
+        self.stop_camera()
+        if self.conn:
+            self.conn.close()
+        self.root.quit()
+        self.root.destroy()
+    
+    def run(self):
+        """Run the application"""
+        try:
+            self.root.protocol("WM_DELETE_WINDOW", self.exit_application)
+            self.root.mainloop()
+        except KeyboardInterrupt:
+            self.exit_application()
+
+def main():
+    """Main function to run the palm biometric system"""
+    try:
+        # Check if required modules are available
+        required_modules = ['cv2', 'mediapipe', 'sklearn', 'PIL']
+        missing_modules = []
+        
+        for module in required_modules:
+            try:
+                __import__(module)
+            except ImportError:
+                missing_modules.append(module)
+        
+        if missing_modules:
+            print("Missing required modules:")
+            for module in missing_modules:
+                print(f"  - {module}")
+            print("\nInstall them using:")
+            print("pip install opencv-python mediapipe scikit-learn pillow")
+            return
+        
+        # Start the application
+        app = PalmBiometricSystem()
+        app.run()
+        
+    except Exception as e:
+        print(f"Application error: {e}")
+
+if __name__ == "__main__":
+    main()
