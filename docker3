@@ -1,0 +1,846 @@
+import cv2
+import numpy as np
+import sqlite3
+import pickle
+import threading
+import time
+from datetime import datetime
+from sklearn.ensemble import VotingClassifier
+from sklearn.svm import SVC
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.neural_network import MLPClassifier
+from sklearn.preprocessing import StandardScaler
+from sklearn.model_selection import train_test_split
+import mediapipe as mp
+import tkinter as tk
+from tkinter import ttk, messagebox, filedialog
+from PIL import Image, ImageTk
+import os
+import json
+import hashlib
+from typing import List, Dict, Tuple, Optional
+import logging
+
+# Configure logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
+
+class AdvancedBiometricAnalyzer:
+    """Advanced biometric analysis with comprehensive feature extraction"""
+    
+    def __init__(self):
+        self.mp_hands = mp.solutions.hands
+        self.hands = self.mp_hands.Hands(
+            static_image_mode=False,
+            max_num_hands=1,
+            min_detection_confidence=0.7,
+            min_tracking_confidence=0.5
+        )
+        self.mp_drawing = mp.solutions.drawing_utils
+        
+    def extract_comprehensive_features(self, landmarks) -> Dict:
+        """Extract hundreds of biometric features from palm landmarks"""
+        if not landmarks:
+            return {}
+            
+        points = np.array([[lm.x, lm.y, lm.z] for lm in landmarks.landmark])
+        
+        features = {}
+        
+        # 1. Distance-based features (all pairwise distances)
+        for i in range(len(points)):
+            for j in range(i+1, len(points)):
+                dist = np.linalg.norm(points[i][:2] - points[j][:2])
+                features[f'dist_{i}_{j}'] = dist
+        
+        # 2. Angle-based features
+        for i in range(len(points)-2):
+            v1 = points[i+1][:2] - points[i][:2]
+            v2 = points[i+2][:2] - points[i+1][:2]
+            angle = np.arctan2(np.cross(v1, v2), np.dot(v1, v2))
+            features[f'angle_{i}'] = angle
+        
+        # 3. Finger length ratios
+        finger_tips = [4, 8, 12, 16, 20]  # thumb, index, middle, ring, pinky
+        finger_bases = [2, 5, 9, 13, 17]
+        
+        for i, (tip, base) in enumerate(zip(finger_tips, finger_bases)):
+            length = np.linalg.norm(points[tip][:2] - points[base][:2])
+            features[f'finger_{i}_length'] = length
+        
+        # 4. Palm geometry features
+        palm_center = np.mean(points[0:5], axis=0)
+        palm_radius = np.std([np.linalg.norm(p - palm_center[:2]) for p in points[:5]])
+        features['palm_radius'] = palm_radius
+        
+        # 5. Statistical features
+        features['mean_x'] = np.mean(points[:, 0])
+        features['mean_y'] = np.mean(points[:, 1])
+        features['std_x'] = np.std(points[:, 0])
+        features['std_y'] = np.std(points[:, 1])
+        
+        # 6. Curvature features
+        for i in range(len(points)-2):
+            p1, p2, p3 = points[i:i+3]
+            curvature = self._calculate_curvature(p1[:2], p2[:2], p3[:2])
+            features[f'curvature_{i}'] = curvature
+        
+        return features
+    
+    def _calculate_curvature(self, p1, p2, p3):
+        """Calculate curvature between three points"""
+        v1 = p2 - p1
+        v2 = p3 - p2
+        cross_product = np.cross(v1, v2)
+        return np.linalg.norm(cross_product) / (np.linalg.norm(v1) * np.linalg.norm(v2) + 1e-8)
+    
+    def assess_quality(self, frame, landmarks) -> Tuple[float, str]:
+        """Assess the quality of palm presentation"""
+        if not landmarks:
+            return 0.0, "No palm detected"
+        
+        quality_score = 0.0
+        issues = []
+        
+        # 1. Check palm visibility
+        palm_visible = len(landmarks.landmark) >= 21
+        if palm_visible:
+            quality_score += 0.3
+        else:
+            issues.append("Incomplete palm detection")
+        
+        # 2. Check lighting (brightness analysis)
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        brightness = np.mean(gray)
+        if 50 < brightness < 200:
+            quality_score += 0.3
+        else:
+            issues.append("Poor lighting conditions")
+        
+        # 3. Check palm position (should be centered)
+        h, w = frame.shape[:2]
+        palm_center = np.mean([[lm.x * w, lm.y * h] for lm in landmarks.landmark], axis=0)
+        center_distance = np.linalg.norm(palm_center - np.array([w/2, h/2]))
+        if center_distance < w * 0.3:
+            quality_score += 0.2
+        else:
+            issues.append("Palm not centered")
+        
+        # 4. Check palm size (should be reasonably large)
+        palm_size = self._calculate_palm_size(landmarks)
+        if palm_size > 0.1:
+            quality_score += 0.2
+        else:
+            issues.append("Palm too small")
+        
+        return quality_score, "; ".join(issues) if issues else "Good quality"
+    
+    def _calculate_palm_size(self, landmarks):
+        """Calculate relative palm size"""
+        points = np.array([[lm.x, lm.y] for lm in landmarks.landmark])
+        return np.std(points[:, 0]) + np.std(points[:, 1])
+    
+    def preprocess_image(self, frame):
+        """Enhance image for better landmark detection"""
+        # Convert to LAB color space for better contrast
+        lab = cv2.cvtColor(frame, cv2.COLOR_BGR2LAB)
+        l, a, b = cv2.split(lab)
+        
+        # Apply CLAHE to L channel
+        clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8,8))
+        l = clahe.apply(l)
+        
+        # Merge channels and convert back
+        enhanced = cv2.merge([l, a, b])
+        enhanced = cv2.cvtColor(enhanced, cv2.COLOR_LAB2BGR)
+        
+        # Apply slight Gaussian blur to reduce noise
+        enhanced = cv2.GaussianBlur(enhanced, (3, 3), 0)
+        
+        return enhanced
+
+class HybridMLEngine:
+    """Hybrid machine learning engine with ensemble models"""
+    
+    def __init__(self):
+        self.ensemble_model = None
+        self.scaler = StandardScaler()
+        self.is_trained = False
+        self.confidence_threshold = 0.8
+        self.similarity_threshold = 0.85
+        
+    def create_ensemble_model(self):
+        """Create voting classifier with multiple models"""
+        svm = SVC(probability=True, random_state=42)
+        rf = RandomForestClassifier(n_estimators=100, random_state=42)
+        nn = MLPClassifier(hidden_layer_sizes=(100, 50), max_iter=500, random_state=42)
+        
+        self.ensemble_model = VotingClassifier(
+            estimators=[('svm', svm), ('rf', rf), ('nn', nn)],
+            voting='soft'
+        )
+    
+    def train_model(self, features_list, labels):
+        """Train the ensemble model"""
+        if not features_list or not labels:
+            return False
+            
+        try:
+            # Prepare data
+            X = np.array([list(features.values()) for features in features_list])
+            y = np.array(labels)
+            
+            # Scale features
+            X_scaled = self.scaler.fit_transform(X)
+            
+            # Create and train ensemble model
+            self.create_ensemble_model()
+            self.ensemble_model.fit(X_scaled, y)
+            
+            self.is_trained = True
+            logger.info("Ensemble model trained successfully")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error training model: {e}")
+            return False
+    
+    def predict_user(self, features) -> Tuple[Optional[str], float]:
+        """Primary ML-based prediction"""
+        if not self.is_trained or not self.ensemble_model:
+            return None, 0.0
+            
+        try:
+            X = np.array([list(features.values())])
+            X_scaled = self.scaler.transform(X)
+            
+            prediction = self.ensemble_model.predict(X_scaled)[0]
+            probabilities = self.ensemble_model.predict_proba(X_scaled)[0]
+            confidence = max(probabilities)
+            
+            if confidence >= self.confidence_threshold:
+                return prediction, confidence
+            else:
+                return None, confidence
+                
+        except Exception as e:
+            logger.error(f"Error in ML prediction: {e}")
+            return None, 0.0
+    
+    def similarity_match(self, query_features, stored_features_dict) -> Tuple[Optional[str], float]:
+        """Fallback similarity-based matching"""
+        if not stored_features_dict:
+            return None, 0.0
+            
+        best_match = None
+        best_similarity = 0.0
+        
+        for user_id, stored_features in stored_features_dict.items():
+            similarity = self._calculate_similarity(query_features, stored_features)
+            if similarity > best_similarity:
+                best_similarity = similarity
+                best_match = user_id
+        
+        if best_similarity >= self.similarity_threshold:
+            return best_match, best_similarity
+        else:
+            return None, best_similarity
+    
+    def _calculate_similarity(self, features1, features2) -> float:
+        """Calculate similarity between two feature sets"""
+        if not features1 or not features2:
+            return 0.0
+            
+        # Convert to numpy arrays
+        f1 = np.array(list(features1.values()))
+        f2 = np.array(list(features2.values()))
+        
+        # Ensure same length
+        min_len = min(len(f1), len(f2))
+        f1 = f1[:min_len]
+        f2 = f2[:min_len]
+        
+        # Calculate cosine similarity
+        dot_product = np.dot(f1, f2)
+        norm1 = np.linalg.norm(f1)
+        norm2 = np.linalg.norm(f2)
+        
+        if norm1 == 0 or norm2 == 0:
+            return 0.0
+            
+        return dot_product / (norm1 * norm2)
+
+class SecureDatabase:
+    """Secure SQLite database for user management"""
+    
+    def __init__(self, db_path="biometric_users.db"):
+        self.db_path = db_path
+        self.init_database()
+    
+    def init_database(self):
+        """Initialize database tables"""
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            
+            # Users table
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS users (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id TEXT UNIQUE NOT NULL,
+                    name TEXT NOT NULL,
+                    date_of_birth TEXT NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
+            
+            # Biometric features table
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS biometric_features (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id TEXT NOT NULL,
+                    features BLOB NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (user_id) REFERENCES users (user_id)
+                )
+            ''')
+            
+            # Identity documents table
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS identity_documents (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id TEXT NOT NULL,
+                    document_type TEXT NOT NULL,
+                    document_data BLOB NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (user_id) REFERENCES users (user_id)
+                )
+            ''')
+            
+            conn.commit()
+    
+    def register_user(self, user_id: str, name: str, dob: str, features: Dict, 
+                     aadhaar_data: bytes = None, pan_data: bytes = None) -> bool:
+        """Register a new user with complete profile"""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                
+                # Check for duplicate palm
+                if self._check_duplicate_palm(features):
+                    return False, "Palm already registered"
+                
+                # Insert user
+                cursor.execute(
+                    "INSERT INTO users (user_id, name, date_of_birth) VALUES (?, ?, ?)",
+                    (user_id, name, dob)
+                )
+                
+                # Insert biometric features
+                features_blob = pickle.dumps(features)
+                cursor.execute(
+                    "INSERT INTO biometric_features (user_id, features) VALUES (?, ?)",
+                    (user_id, features_blob)
+                )
+                
+                # Insert identity documents
+                if aadhaar_data:
+                    cursor.execute(
+                        "INSERT INTO identity_documents (user_id, document_type, document_data) VALUES (?, ?, ?)",
+                        (user_id, "aadhaar", aadhaar_data)
+                    )
+                
+                if pan_data:
+                    cursor.execute(
+                        "INSERT INTO identity_documents (user_id, document_type, document_data) VALUES (?, ?, ?)",
+                        (user_id, "pan", pan_data)
+                    )
+                
+                conn.commit()
+                return True, "User registered successfully"
+                
+        except Exception as e:
+            logger.error(f"Error registering user: {e}")
+            return False, str(e)
+    
+    def _check_duplicate_palm(self, features: Dict) -> bool:
+        """Check if palm features already exist in database"""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                cursor.execute("SELECT features FROM biometric_features")
+                stored_features = cursor.fetchall()
+                
+                for stored_feature_blob, in stored_features:
+                    stored_features_dict = pickle.loads(stored_feature_blob)
+                    similarity = self._calculate_similarity(features, stored_features_dict)
+                    if similarity > 0.9:  # High similarity threshold for duplicates
+                        return True
+                        
+                return False
+                
+        except Exception as e:
+            logger.error(f"Error checking duplicate palm: {e}")
+            return False
+    
+    def _calculate_similarity(self, features1: Dict, features2: Dict) -> float:
+        """Calculate similarity between feature sets"""
+        if not features1 or not features2:
+            return 0.0
+            
+        f1 = np.array(list(features1.values()))
+        f2 = np.array(list(features2.values()))
+        
+        min_len = min(len(f1), len(f2))
+        f1 = f1[:min_len]
+        f2 = f2[:min_len]
+        
+        dot_product = np.dot(f1, f2)
+        norm1 = np.linalg.norm(f1)
+        norm2 = np.linalg.norm(f2)
+        
+        if norm1 == 0 or norm2 == 0:
+            return 0.0
+            
+        return dot_product / (norm1 * norm2)
+    
+    def get_user_profile(self, user_id: str) -> Optional[Dict]:
+        """Get complete user profile"""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                
+                # Get user info
+                cursor.execute("SELECT * FROM users WHERE user_id = ?", (user_id,))
+                user_data = cursor.fetchone()
+                
+                if not user_data:
+                    return None
+                
+                # Get biometric features
+                cursor.execute("SELECT features FROM biometric_features WHERE user_id = ?", (user_id,))
+                features_data = cursor.fetchone()
+                
+                # Get identity documents
+                cursor.execute("SELECT document_type, document_data FROM identity_documents WHERE user_id = ?", (user_id,))
+                documents = cursor.fetchall()
+                
+                profile = {
+                    'user_id': user_data[1],
+                    'name': user_data[2],
+                    'date_of_birth': user_data[3],
+                    'created_at': user_data[4],
+                    'features': pickle.loads(features_data[0]) if features_data else None,
+                    'documents': {doc_type: doc_data for doc_type, doc_data in documents}
+                }
+                
+                return profile
+                
+        except Exception as e:
+            logger.error(f"Error getting user profile: {e}")
+            return None
+    
+    def get_all_features(self) -> Dict[str, Dict]:
+        """Get all stored features for ML training"""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                cursor.execute("SELECT user_id, features FROM biometric_features")
+                results = cursor.fetchall()
+                
+                features_dict = {}
+                for user_id, features_blob in results:
+                    features_dict[user_id] = pickle.loads(features_blob)
+                
+                return features_dict
+                
+        except Exception as e:
+            logger.error(f"Error getting all features: {e}")
+            return {}
+
+class BiometricApp:
+    """Main application with interactive GUI"""
+    
+    def __init__(self):
+        self.root = tk.Tk()
+        self.root.title("Advanced Biometric Palm Recognition System")
+        self.root.geometry("1200x800")
+        self.root.configure(bg='#2c3e50')
+        
+        # Initialize components
+        self.analyzer = AdvancedBiometricAnalyzer()
+        self.ml_engine = HybridMLEngine()
+        self.database = SecureDatabase()
+        
+        # Camera setup
+        self.cap = None
+        self.is_camera_active = False
+        
+        # Current state
+        self.current_mode = "recognition"  # "recognition" or "registration"
+        self.registration_data = {}
+        
+        self.setup_ui()
+        self.start_camera()
+    
+    def setup_ui(self):
+        """Setup the user interface"""
+        # Main frame
+        main_frame = ttk.Frame(self.root)
+        main_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        
+        # Title
+        title_label = ttk.Label(main_frame, text="🖐️ Advanced Biometric Palm Recognition", 
+                               font=('Arial', 20, 'bold'))
+        title_label.pack(pady=10)
+        
+        # Mode selection
+        mode_frame = ttk.Frame(main_frame)
+        mode_frame.pack(pady=10)
+        
+        self.mode_var = tk.StringVar(value="recognition")
+        ttk.Radiobutton(mode_frame, text="Recognition", variable=self.mode_var, 
+                       value="recognition", command=self.switch_mode).pack(side=tk.LEFT, padx=10)
+        ttk.Radiobutton(mode_frame, text="Registration", variable=self.mode_var, 
+                       value="registration", command=self.switch_mode).pack(side=tk.LEFT, padx=10)
+        
+        # Camera frame
+        camera_frame = ttk.LabelFrame(main_frame, text="Live Camera Feed")
+        camera_frame.pack(fill=tk.BOTH, expand=True, pady=10)
+        
+        self.camera_label = ttk.Label(camera_frame)
+        self.camera_label.pack(pady=10)
+        
+        # Status frame
+        status_frame = ttk.Frame(main_frame)
+        status_frame.pack(fill=tk.X, pady=10)
+        
+        self.status_label = ttk.Label(status_frame, text="Ready", font=('Arial', 12))
+        self.status_label.pack(side=tk.LEFT)
+        
+        self.quality_label = ttk.Label(status_frame, text="Quality: --", font=('Arial', 12))
+        self.quality_label.pack(side=tk.RIGHT)
+        
+        # Control buttons
+        button_frame = ttk.Frame(main_frame)
+        button_frame.pack(pady=10)
+        
+        self.retrain_button = ttk.Button(button_frame, text="Retrain ML Model", 
+                                       command=self.retrain_model)
+        self.retrain_button.pack(side=tk.LEFT, padx=5)
+        
+        self.register_button = ttk.Button(button_frame, text="Register User", 
+                                        command=self.start_registration)
+        self.register_button.pack(side=tk.LEFT, padx=5)
+        
+        # Progress bar
+        self.progress_var = tk.DoubleVar()
+        self.progress_bar = ttk.Progressbar(main_frame, variable=self.progress_var, 
+                                          maximum=100)
+        self.progress_bar.pack(fill=tk.X, pady=5)
+        
+        # Results frame
+        results_frame = ttk.LabelFrame(main_frame, text="Results")
+        results_frame.pack(fill=tk.BOTH, expand=True, pady=10)
+        
+        self.results_text = tk.Text(results_frame, height=10, wrap=tk.WORD)
+        self.results_text.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+    
+    def switch_mode(self):
+        """Switch between recognition and registration modes"""
+        self.current_mode = self.mode_var.get()
+        if self.current_mode == "recognition":
+            self.status_label.config(text="Recognition Mode - Place your palm in front of camera")
+        else:
+            self.status_label.config(text="Registration Mode - Follow the registration process")
+    
+    def start_camera(self):
+        """Start the camera feed"""
+        self.cap = cv2.VideoCapture(0)
+        if not self.cap.isOpened():
+            messagebox.showerror("Error", "Could not open camera")
+            return
+        
+        self.is_camera_active = True
+        self.update_camera()
+    
+    def update_camera(self):
+        """Update camera feed with processing"""
+        if not self.is_camera_active:
+            return
+        
+        ret, frame = self.cap.read()
+        if not ret:
+            return
+        
+        # Preprocess image
+        enhanced_frame = self.analyzer.preprocess_image(frame)
+        
+        # Convert to RGB for MediaPipe
+        rgb_frame = cv2.cvtColor(enhanced_frame, cv2.COLOR_BGR2RGB)
+        results = self.analyzer.hands.process(rgb_frame)
+        
+        # Draw landmarks
+        if results.multi_hand_landmarks:
+            for hand_landmarks in results.multi_hand_landmarks:
+                self.analyzer.mp_drawing.draw_landmarks(
+                    enhanced_frame, hand_landmarks, self.analyzer.mp_hands.HAND_CONNECTIONS
+                )
+                
+                # Extract features and assess quality
+                features = self.analyzer.extract_comprehensive_features(hand_landmarks)
+                quality_score, quality_message = self.analyzer.assess_quality(frame, hand_landmarks)
+                
+                # Update quality display
+                self.quality_label.config(text=f"Quality: {quality_score:.2f} - {quality_message}")
+                
+                # Process based on mode
+                if self.current_mode == "recognition":
+                    self.process_recognition(features, quality_score)
+                else:
+                    self.process_registration(features, quality_score)
+        
+        # Convert to PhotoImage for display
+        frame_rgb = cv2.cvtColor(enhanced_frame, cv2.COLOR_BGR2RGB)
+        frame_pil = Image.fromarray(frame_rgb)
+        frame_pil = frame_pil.resize((640, 480), Image.Resampling.LANCZOS)
+        frame_tk = ImageTk.PhotoImage(frame_pil)
+        
+        self.camera_label.configure(image=frame_tk)
+        self.camera_label.image = frame_tk
+        
+        # Schedule next update
+        self.root.after(30, self.update_camera)
+    
+    def process_recognition(self, features, quality_score):
+        """Process palm recognition"""
+        if quality_score < 0.5:
+            return
+        
+        # Try ML-based recognition first
+        user_id, confidence = self.ml_engine.predict_user(features)
+        
+        if user_id and confidence > 0.8:
+            self.show_recognition_result(user_id, confidence, "ML Model")
+        else:
+            # Fallback to similarity matching
+            stored_features = self.database.get_all_features()
+            user_id, similarity = self.ml_engine.similarity_match(features, stored_features)
+            
+            if user_id:
+                self.show_recognition_result(user_id, similarity, "Similarity Match")
+    
+    def show_recognition_result(self, user_id, confidence, method):
+        """Show recognition result with user profile"""
+        profile = self.database.get_user_profile(user_id)
+        if not profile:
+            return
+        
+        result_text = f"""
+=== RECOGNITION SUCCESS ===
+Method: {method}
+Confidence: {confidence:.3f}
+
+User Profile:
+- Name: {profile['name']}
+- User ID: {profile['user_id']}
+- Date of Birth: {profile['date_of_birth']}
+- Registered: {profile['created_at']}
+
+Identity Documents: {list(profile['documents'].keys())}
+"""
+        
+        self.results_text.delete(1.0, tk.END)
+        self.results_text.insert(tk.END, result_text)
+        
+        # Show detailed profile window
+        self.show_profile_window(profile)
+    
+    def show_profile_window(self, profile):
+        """Show detailed profile window with documents"""
+        profile_window = tk.Toplevel(self.root)
+        profile_window.title(f"User Profile - {profile['name']}")
+        profile_window.geometry("600x500")
+        
+        # Profile information
+        info_frame = ttk.LabelFrame(profile_window, text="User Information")
+        info_frame.pack(fill=tk.X, padx=10, pady=10)
+        
+        ttk.Label(info_frame, text=f"Name: {profile['name']}").pack(anchor=tk.W, padx=10, pady=5)
+        ttk.Label(info_frame, text=f"User ID: {profile['user_id']}").pack(anchor=tk.W, padx=10, pady=5)
+        ttk.Label(info_frame, text=f"Date of Birth: {profile['date_of_birth']}").pack(anchor=tk.W, padx=10, pady=5)
+        ttk.Label(info_frame, text=f"Registered: {profile['created_at']}").pack(anchor=tk.W, padx=10, pady=5)
+        
+        # Documents section
+        if profile['documents']:
+            docs_frame = ttk.LabelFrame(profile_window, text="Identity Documents")
+            docs_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+            
+            for doc_type, doc_data in profile['documents'].items():
+                ttk.Label(docs_frame, text=f"{doc_type.upper()} Card: Available", 
+                         font=('Arial', 10, 'bold')).pack(anchor=tk.W, padx=10, pady=5)
+    
+    def start_registration(self):
+        """Start user registration process"""
+        self.registration_data = {}
+        self.show_registration_dialog()
+    
+    def show_registration_dialog(self):
+        """Show registration dialog"""
+        reg_window = tk.Toplevel(self.root)
+        reg_window.title("User Registration")
+        reg_window.geometry("400x500")
+        
+        # Registration form
+        form_frame = ttk.Frame(reg_window)
+        form_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
+        
+        ttk.Label(form_frame, text="User Registration", font=('Arial', 16, 'bold')).pack(pady=10)
+        
+        # Name
+        ttk.Label(form_frame, text="Full Name:").pack(anchor=tk.W, pady=5)
+        name_entry = ttk.Entry(form_frame, width=40)
+        name_entry.pack(fill=tk.X, pady=5)
+        
+        # Date of Birth
+        ttk.Label(form_frame, text="Date of Birth (YYYY-MM-DD):").pack(anchor=tk.W, pady=5)
+        dob_entry = ttk.Entry(form_frame, width=40)
+        dob_entry.pack(fill=tk.X, pady=5)
+        
+        # Document upload buttons
+        ttk.Label(form_frame, text="Identity Documents:", font=('Arial', 12, 'bold')).pack(pady=10)
+        
+        aadhaar_button = ttk.Button(form_frame, text="Upload Aadhaar Card", 
+                                   command=lambda: self.upload_document(reg_window, "aadhaar"))
+        aadhaar_button.pack(fill=tk.X, pady=5)
+        
+        pan_button = ttk.Button(form_frame, text="Upload PAN Card", 
+                               command=lambda: self.upload_document(reg_window, "pan"))
+        pan_button.pack(fill=tk.X, pady=5)
+        
+        # Register button
+        register_btn = ttk.Button(form_frame, text="Complete Registration", 
+                                 command=lambda: self.complete_registration(
+                                     reg_window, name_entry.get(), dob_entry.get()
+                                 ))
+        register_btn.pack(fill=tk.X, pady=20)
+    
+    def upload_document(self, parent_window, doc_type):
+        """Upload identity document"""
+        file_path = filedialog.askopenfilename(
+            title=f"Select {doc_type.upper()} Card",
+            filetypes=[("Image files", "*.jpg *.jpeg *.png *.bmp")]
+        )
+        
+        if file_path:
+            try:
+                with open(file_path, 'rb') as f:
+                    self.registration_data[f'{doc_type}_data'] = f.read()
+                messagebox.showinfo("Success", f"{doc_type.upper()} card uploaded successfully")
+            except Exception as e:
+                messagebox.showerror("Error", f"Failed to upload {doc_type} card: {e}")
+    
+    def complete_registration(self, parent_window, name, dob):
+        """Complete the registration process"""
+        if not name or not dob:
+            messagebox.showerror("Error", "Please fill in all required fields")
+            return
+        
+        # Generate user ID
+        user_id = f"USER_{int(time.time())}"
+        
+        # Store registration data
+        self.registration_data.update({
+            'user_id': user_id,
+            'name': name,
+            'dob': dob
+        })
+        
+        parent_window.destroy()
+        self.current_mode = "registration"
+        self.mode_var.set("registration")
+        self.status_label.config(text="Registration Mode - Place your palm in front of camera for biometric capture")
+    
+    def process_registration(self, features, quality_score):
+        """Process palm registration"""
+        if quality_score < 0.7:  # Higher quality threshold for registration
+            return
+        
+        if not self.registration_data:
+            return
+        
+        # Store features temporarily
+        self.registration_data['features'] = features
+        
+        # Register user
+        success, message = self.database.register_user(
+            self.registration_data['user_id'],
+            self.registration_data['name'],
+            self.registration_data['dob'],
+            features,
+            self.registration_data.get('aadhaar_data'),
+            self.registration_data.get('pan_data')
+        )
+        
+        if success:
+            self.results_text.delete(1.0, tk.END)
+            self.results_text.insert(tk.END, f"""
+=== REGISTRATION SUCCESS ===
+User ID: {self.registration_data['user_id']}
+Name: {self.registration_data['name']}
+Date of Birth: {self.registration_data['dob']}
+Biometric Features: Captured
+Documents: {list(self.registration_data.keys())}
+
+{message}
+""")
+            
+            # Reset registration data
+            self.registration_data = {}
+            self.current_mode = "recognition"
+            self.mode_var.set("recognition")
+            
+            # Retrain model in background
+            threading.Thread(target=self.retrain_model, daemon=True).start()
+        else:
+            messagebox.showerror("Registration Failed", message)
+    
+    def retrain_model(self):
+        """Retrain the ML model in background"""
+        try:
+            self.status_label.config(text="Training ML model...")
+            self.progress_var.set(0)
+            
+            # Get all features and labels
+            features_dict = self.database.get_all_features()
+            if len(features_dict) < 2:
+                self.status_label.config(text="Need at least 2 users for training")
+                return
+            
+            features_list = list(features_dict.values())
+            labels = list(features_dict.keys())
+            
+            # Train model
+            success = self.ml_engine.train_model(features_list, labels)
+            
+            if success:
+                self.status_label.config(text="ML model trained successfully")
+                self.progress_var.set(100)
+            else:
+                self.status_label.config(text="ML model training failed")
+                
+        except Exception as e:
+            logger.error(f"Error retraining model: {e}")
+            self.status_label.config(text="Training error occurred")
+    
+    def run(self):
+        """Run the application"""
+        self.root.mainloop()
+    
+    def __del__(self):
+        """Cleanup"""
+        if self.cap:
+            self.cap.release()
+
+if __name__ == "__main__":
+    app = BiometricApp()
+    app.run()
